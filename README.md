@@ -6,6 +6,28 @@ Zuordnungen werden gespeichert, sodass jeder neue Monatsauszug automatisch
 kategorisiert wird. Mehrere Auszüge lassen sich gleichzeitig laden, um ein
 ganzes Jahr mit Grafiken zu analysieren.
 
+## Neu in Version 2
+
+- **Budgets je Kategorie** mit Ampel (grün/gelb/rot) – eigener Tab „Budgets“ +
+  Diagramm „Budget-Ampel“.
+- **Echter Kontostand-Verlauf** aus dem Auszug (Alter/Neuer Saldo) inkl.
+  automatischem **Saldo-Abgleich** beim Import.
+- **Abo-/Fixkosten-Erkennung** mit Monats- **und Jahreskosten** und nächstem
+  voraussichtlichen Buchungsdatum.
+- **Drill-down:** Klick auf ein Diagramm-Segment zeigt die zugehörigen Buchungen.
+- **Buchung aufteilen** (ein Betrag auf mehrere Kategorien), **interne
+  Umbuchungen** ausschließen (zählen nicht als Ausgabe/Einnahme),
+  **Rückerstattungen** mindern die Kategorieausgabe statt als Einkommen zu zählen.
+- **Bessere Regeln:** spezifischste Regel gewinnt, optional **Regex** und
+  **Betragsgrenzen**.
+- **Schnell-Zuordnen:** „Nächste offene ▶“, Zifferntasten **1–9**, **Undo (Strg+Z)**,
+  Kategorie direkt in der Tabelle per Doppelklick ändern.
+- **Filter** nach Konto, Betrag (von–bis) und Typ (Ein-/Ausgaben).
+- **Export:** CSV, Excel (mit `openpyxl`) und **PDF-Report**.
+- **Mehrkonten:** Konto/IBAN werden erkannt und sind filterbar.
+- **Robustheit:** atomare Schreibvorgänge mit `.bak`-Backup; Fenstergröße und
+  letzte Filter werden gemerkt.
+
 ## Installation (einmalig)
 
 ```bash

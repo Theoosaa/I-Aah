@@ -1,13 +1,15 @@
 """PDF-Parser fuer ING-DiBa / Sparkassen-aehnliche Girokonto-Kontoauszuege.
 
-Liest die Buchungen aus einem Kontoauszug-PDF und liefert eine Liste von
-Transaktionen. Der Parser ist bewusst tolerant: Einnahmen (ohne Minuszeichen)
-und Ausgaben (mit '-') werden erkannt, Folgezeilen mit Verwendungszweck werden
-der jeweiligen Buchung zugeordnet, Fuss-/Kopfzeilen werden herausgefiltert.
+Liefert ein ``Statement`` mit Buchungen (``Transaction``) und Metadaten
+(Konto, IBAN, alter/neuer Saldo). Der Parser ist bewusst tolerant: Einnahmen
+(ohne Minuszeichen) und Ausgaben (mit '-') werden erkannt, Folgezeilen mit
+Verwendungszweck werden der jeweiligen Buchung zugeordnet, Kopf-/Fusszeilen
+werden herausgefiltert.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -26,6 +28,10 @@ _MONTHS = {
     "november": 11, "dezember": 12,
 }
 _PERIOD_RE = re.compile(r"Kontoauszug\s+([A-Za-zÄÖÜäöü�]+)\s+(\d{4})")
+_ALTER_RE = re.compile(r"Alter Saldo\s+(-?[\d.]+,\d{2})")
+_NEUER_RE = re.compile(r"Neuer Saldo\s+(-?[\d.]+,\d{2})")
+_IBAN_RE = re.compile(r"IBAN\s+([A-Z]{2}[0-9A-Z ]{13,34})")
+_KONTO_RE = re.compile(r"Nummer\s+(\d{6,})")
 
 # Zeilen, die zum Seiten-Kopf/-Fuss gehoeren und NICHT Verwendungszweck sind.
 _FOOTER_PREFIXES = (
@@ -54,6 +60,7 @@ class Transaction:
     betrag: float            # negativ = Ausgabe, positiv = Einnahme
     monat: str               # "YYYY-MM"
     quelle: str              # Dateiname
+    konto: str = ""          # Kontonummer (fuer Mehrkonten)
     kategorie: str = "Nicht zugeordnet"
 
     @property
@@ -70,7 +77,8 @@ class Transaction:
         """Fuer die persistente Speicherung (ohne Kategorie – wird neu berechnet)."""
         return {"datum": self.datum.isoformat(), "buchungsart": self.buchungsart,
                 "empfaenger": self.empfaenger, "zweck": self.zweck,
-                "betrag": self.betrag, "monat": self.monat, "quelle": self.quelle}
+                "betrag": self.betrag, "monat": self.monat, "quelle": self.quelle,
+                "konto": self.konto}
 
     @staticmethod
     def from_dict(d: dict) -> "Transaction":
@@ -79,7 +87,30 @@ class Transaction:
             datum=date(y, m, day), buchungsart=d.get("buchungsart", ""),
             empfaenger=d.get("empfaenger", ""), zweck=d.get("zweck", ""),
             betrag=float(d["betrag"]), monat=d.get("monat", f"{y:04d}-{m:02d}"),
-            quelle=d.get("quelle", ""))
+            quelle=d.get("quelle", ""), konto=d.get("konto", ""))
+
+
+@dataclass
+class Statement:
+    """Ein Kontoauszug: Metadaten + Buchungen."""
+    quelle: str
+    konto: str = ""
+    iban: str = ""
+    monat: str = ""
+    alter_saldo: float | None = None
+    neuer_saldo: float | None = None
+    transactions: list[Transaction] = field(default_factory=list)
+
+    @property
+    def summe(self) -> float:
+        return sum(t.betrag for t in self.transactions)
+
+    @property
+    def reconciles(self) -> bool | None:
+        """True/False, ob Buchungssumme zur Saldodifferenz passt (oder None)."""
+        if self.alter_saldo is None or self.neuer_saldo is None:
+            return None
+        return abs((self.alter_saldo + self.summe) - self.neuer_saldo) < 0.01
 
 
 def _parse_amount(raw: str) -> float:
@@ -111,12 +142,12 @@ def _is_footer(line: str) -> bool:
     return False
 
 
-def parse_pdf(path: str) -> list[Transaction]:
-    """Liest alle Buchungen aus einem Kontoauszug-PDF."""
-    import os
+def parse_pdf(path: str) -> Statement:
+    """Liest einen Kontoauszug (Buchungen + Metadaten) aus einem PDF."""
     quelle = os.path.basename(path)
     lines: list[str] = []
     period_month = period_year = None
+    stmt = Statement(quelle=quelle)
 
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
@@ -125,17 +156,32 @@ def parse_pdf(path: str) -> list[Transaction]:
                 if period_month is None:
                     m = _PERIOD_RE.search(line)
                     if m:
-                        name = m.group(1).lower().replace("�", "")
-                        for key, num in _MONTHS.items():
-                            if key.replace("ä", "a").replace("ö", "o").replace(
-                                    "ü", "u").replace("mrz", "maerz") in name \
-                                    or name in key:
-                                period_month = num
-                                break
-                        # direkter Treffer
-                        period_month = _MONTHS.get(m.group(1).lower(), period_month)
+                        period_month = _MONTHS.get(m.group(1).lower())
                         period_year = int(m.group(2))
+                # Metadaten (nur erstes Vorkommen zaehlt)
+                if stmt.alter_saldo is None:
+                    a = _ALTER_RE.search(line)
+                    if a:
+                        stmt.alter_saldo = _parse_amount(a.group(1))
+                if stmt.neuer_saldo is None:
+                    n = _NEUER_RE.search(line)
+                    if n:
+                        stmt.neuer_saldo = _parse_amount(n.group(1))
+                if not stmt.iban:
+                    ib = _IBAN_RE.search(line)
+                    if ib:
+                        stmt.iban = ib.group(1).replace(" ", "").strip()
+                if not stmt.konto:
+                    k = _KONTO_RE.search(line)
+                    if k:
+                        stmt.konto = k.group(1)
                 lines.append(line)
+
+    if period_year and period_month:
+        stmt.monat = f"{period_year:04d}-{period_month:02d}"
+    # Fallback-Konto: aus IBAN ableiten, falls keine Nummer gefunden
+    if not stmt.konto and stmt.iban:
+        stmt.konto = stmt.iban[-10:]
 
     transactions: list[Transaction] = []
     current: Transaction | None = None
@@ -164,6 +210,7 @@ def parse_pdf(path: str) -> list[Transaction]:
                 betrag=_parse_amount(betrag_str),
                 monat=f"{d.year:04d}-{d.month:02d}",
                 quelle=quelle,
+                konto=stmt.konto,
             )
         else:
             if current is not None and not _is_footer(line):
@@ -173,16 +220,18 @@ def parse_pdf(path: str) -> list[Transaction]:
                 if s:
                     zweck_lines.append(s)
     flush()
-    return transactions
+    stmt.transactions = transactions
+    return stmt
 
 
 if __name__ == "__main__":
     import sys
     for p in sys.argv[1:]:
-        txns = parse_pdf(p)
-        print(f"\n{p}: {len(txns)} Buchungen")
-        einnahmen = sum(t.betrag for t in txns if t.betrag > 0)
-        ausgaben = sum(t.betrag for t in txns if t.betrag < 0)
-        print(f"  Einnahmen: {einnahmen:10.2f}   Ausgaben: {ausgaben:10.2f}   Saldo: {einnahmen+ausgaben:10.2f}")
-        for t in txns[:8]:
-            print(f"  {t.datum} | {t.buchungsart:18.18} | {t.empfaenger:30.30} | {t.betrag:10.2f} | {t.zweck[:40]}")
+        st = parse_pdf(p)
+        print(f"\n{p}: {len(st.transactions)} Buchungen  Konto={st.konto} "
+              f"IBAN={st.iban} {st.monat}")
+        print(f"  Alter Saldo {st.alter_saldo}  Neuer Saldo {st.neuer_saldo}  "
+              f"Summe {st.summe:.2f}  stimmt={st.reconciles}")
+        for t in st.transactions[:6]:
+            print(f"  {t.datum} | {t.buchungsart:16.16} | {t.empfaenger:28.28} | "
+                  f"{t.betrag:10.2f} | {t.zweck[:36]}")
