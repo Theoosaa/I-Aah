@@ -4,11 +4,13 @@ from unittest import mock
 
 PDF = r"E:\Downloads\Girokonto_5443414341_Kontoauszug_20260802.pdf"
 
-# settings.json + data.json isoliert (nicht die echten ueberschreiben)
+# settings.json + data.json + ui_state.json isoliert (nicht die echten ueberschreiben)
 import kontoanalyse as K
 K.SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "_test_settings.json")
 K.DATA_FILE = os.path.join(os.path.dirname(__file__), "_test_data.json")
-for f in (K.SETTINGS_FILE, K.DATA_FILE):
+K.UI_FILE = os.path.join(os.path.dirname(__file__), "_test_ui.json")
+for f in (K.SETTINGS_FILE, K.DATA_FILE, K.UI_FILE,
+          K.SETTINGS_FILE + ".bak", K.DATA_FILE + ".bak"):
     if os.path.exists(f):
         os.remove(f)
 
@@ -100,6 +102,61 @@ with mock.patch.object(K.messagebox, "showinfo"), \
     assert app.kpi_cards["expense"]["value"].cget("text"), "KPI-Wert leer"
     print("Vergleich/Trend/Abo mit 2 Monaten + KPI-Deltas OK")
 
+    # Neue Features: Parser-Metadaten, Reconciliation, Split, Exclude, Budget, Export
+    st = K.parse_pdf(PDF)
+    assert st.konto and st.iban and st.alter_saldo is not None, "Statement-Metadaten fehlen"
+    assert st.reconciles is True, "Reconciliation sollte stimmen"
+    assert len(app.statements) >= 1, "Statement-Meta nicht gespeichert"
+
+    # Split: erste Buchung 60/40 aufteilen
+    t0 = app.transactions[0]
+    half = round(t0.betrag / 2, 2)
+    app.store.set_split(t0, [{"category": "Lebensmittel", "betrag": half},
+                             {"category": "Sonstiges", "betrag": round(t0.betrag - half, 2)}])
+    parts = app.store.parts(t0)
+    assert len(parts) == 2 and abs(sum(p[1] for p in parts) - t0.betrag) < 0.01, "Split falsch"
+
+    # Exclude: interne Umbuchung zaehlt nicht als Ausgabe
+    inc1, exp1 = app._income_expense(app.transactions)
+    app.store.set_excluded("Sparen/Anlage", True)
+    inc2, exp2 = app._income_expense(app.transactions)
+    assert exp2 <= exp1, "Ausschluss senkt Ausgaben nicht"
+    app.store.set_excluded("Sparen/Anlage", False)
+
+    # Regel-Prioritaet: laengeres Stichwort gewinnt
+    app.store.add_rule("VISA", "Shopping")
+    app.store.add_rule("VISA REWE 435 HANNOVER", "Lebensmittel")
+    tt = K.Transaction.from_dict({"datum": "2026-07-01", "buchungsart": "Lastschrift",
+                                  "empfaenger": "VISA REWE 435 HANNOVER", "zweck": "",
+                                  "betrag": -10.0, "monat": "2026-07", "quelle": "x"})
+    assert app.store._rule_category(tt) == "Lebensmittel", "Regel-Prioritaet falsch"
+
+    # Betragsgrenze
+    app.store.add_rule("MIETE", "Miete & Wohnen", amount_min=500)
+    tlow = K.Transaction.from_dict({"datum": "2026-07-01", "buchungsart": "x",
+                                    "empfaenger": "MIETE klein", "zweck": "",
+                                    "betrag": -50.0, "monat": "2026-07", "quelle": "x"})
+    assert app.store._rule_category(tlow) != "Miete & Wohnen", "Betragsgrenze ignoriert"
+
+    # Budget setzen + Budget-Chart
+    app.store.set_budget("Lebensmittel", 300)
+    app.chart_type.set(K.CHART_BUDGET)
+    app.draw_chart()
+    print("Metadaten/Split/Exclude/Regeln/Budget OK")
+
+    # CSV-Export
+    import csv, tempfile
+    csvpath = os.path.join(os.path.dirname(__file__), "_test_export.csv")
+    with mock.patch.object(K.filedialog, "asksaveasfilename", return_value=csvpath):
+        app.export_csv()
+    assert os.path.exists(csvpath), "CSV nicht exportiert"
+    os.remove(csvpath)
+
+    # UI-State speichern/laden
+    app._save_ui_state()
+    assert os.path.exists(K.UI_FILE), "UI-State nicht gespeichert"
+    print("CSV-Export + UI-State OK")
+
     app.destroy()
 
     # Persistenz: data.json muss existieren; neue Instanz laedt ohne PDF
@@ -114,7 +171,8 @@ with mock.patch.object(K.messagebox, "showinfo"), \
     print("Persistenz: 48 Buchungen aus data.json geladen, Dedupe OK")
     app2.destroy()
 
-for f in (K.SETTINGS_FILE, K.DATA_FILE):
+for f in (K.SETTINGS_FILE, K.DATA_FILE, K.UI_FILE,
+          K.SETTINGS_FILE + ".bak", K.DATA_FILE + ".bak"):
     if os.path.exists(f):
         os.remove(f)
 print("\nALLE TESTS BESTANDEN")

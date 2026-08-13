@@ -1,2 +1,4 @@
 pdfplumber>=0.11
 matplotlib>=3.7
+# optional – nur fuer den Excel-Export (CSV/PDF gehen ohne):
+openpyxl>=3.1

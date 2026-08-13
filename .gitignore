@@ -221,3 +221,7 @@ __marimo__/
 
 settings.json
 data.json
+# I-Aah: generierte/persoenliche Dateien
+ui_state.json
+*.bak
+*.tmp
