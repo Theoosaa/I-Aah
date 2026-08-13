@@ -1,0 +1,159 @@
+{
+  "categories": [
+    {
+      "name": "Einkommen",
+      "color": "#2e7d32"
+    },
+    {
+      "name": "Miete & Wohnen",
+      "color": "#6d4c41"
+    },
+    {
+      "name": "Lebensmittel",
+      "color": "#43a047"
+    },
+    {
+      "name": "Restaurant/Cafe",
+      "color": "#fb8c00"
+    },
+    {
+      "name": "Transport",
+      "color": "#1e88e5"
+    },
+    {
+      "name": "Versicherung",
+      "color": "#8e24aa"
+    },
+    {
+      "name": "Abonnements",
+      "color": "#d81b60"
+    },
+    {
+      "name": "Freizeit",
+      "color": "#00acc1"
+    },
+    {
+      "name": "Shopping",
+      "color": "#5e35b1"
+    },
+    {
+      "name": "Gesundheit",
+      "color": "#e53935"
+    },
+    {
+      "name": "Bargeld",
+      "color": "#757575"
+    },
+    {
+      "name": "Sparen/Anlage",
+      "color": "#00897b"
+    },
+    {
+      "name": "Sonstiges",
+      "color": "#546e7a"
+    },
+    {
+      "name": "Nicht zugeordnet",
+      "color": "#bdbdbd"
+    }
+  ],
+  "rules": [
+    {
+      "keyword": "REWE",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "ALDI",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "LIDL",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "EDEKA",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "PENNY",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "KAUFLAND",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "BIOMARKT",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "DENN S",
+      "category": "Lebensmittel"
+    },
+    {
+      "keyword": "SCHAEFERS",
+      "category": "Restaurant/Cafe"
+    },
+    {
+      "keyword": "BAECKER",
+      "category": "Restaurant/Cafe"
+    },
+    {
+      "keyword": "DM ",
+      "category": "Gesundheit"
+    },
+    {
+      "keyword": "ROSSMANN",
+      "category": "Gesundheit"
+    },
+    {
+      "keyword": "APOTHEKE",
+      "category": "Gesundheit"
+    },
+    {
+      "keyword": "DB VERTRIEB",
+      "category": "Transport"
+    },
+    {
+      "keyword": "DEUTSCHE BAHN",
+      "category": "Transport"
+    },
+    {
+      "keyword": "TANKSTELLE",
+      "category": "Transport"
+    },
+    {
+      "keyword": "ARAL",
+      "category": "Transport"
+    },
+    {
+      "keyword": "SHELL",
+      "category": "Transport"
+    },
+    {
+      "keyword": "NETFLIX",
+      "category": "Abonnements"
+    },
+    {
+      "keyword": "SPOTIFY",
+      "category": "Abonnements"
+    },
+    {
+      "keyword": "AMAZON PRIME",
+      "category": "Abonnements"
+    },
+    {
+      "keyword": "VERS",
+      "category": "Versicherung"
+    },
+    {
+      "keyword": "MIETE",
+      "category": "Miete & Wohnen"
+    },
+    {
+      "keyword": "GEHALT",
+      "category": "Einkommen"
+    }
+  ],
+  "overrides": {}
+}
