@@ -6,6 +6,19 @@ Zuordnungen werden gespeichert, sodass jeder neue Monatsauszug automatisch
 kategorisiert wird. Mehrere Auszüge lassen sich gleichzeitig laden, um ein
 ganzes Jahr mit Grafiken zu analysieren.
 
+## Neu in Version 3
+
+- **Neue Diagramme:** Geldfluss-**Sankey** (Einnahmen → Kategorien), **Kalender-
+  Heatmap** der Tagesausgaben, **Jahresvergleich** (Ausgaben je Monat pro Jahr).
+- **Dark Mode** (Menü *Ansicht*), Einstellung wird gemerkt.
+- **Hintergrund-Import mit Fortschrittsbalken** – die Oberfläche friert bei vielen
+  PDFs nicht mehr ein.
+- **CSV-Import** vieler Banken (ING, Sparkasse, DKB …) mit Auto-Erkennung und
+  manueller Spaltenzuordnung (Menü *Datei → CSV importieren*).
+- **Passwortschutz:** `data.json` kann verschlüsselt werden (Menü *Datenschutz*;
+  benötigt `cryptography`).
+- **`.exe`-Bau** per `build_exe.bat` (PyInstaller) – Weitergabe ohne Python.
+
 ## Neu in Version 2
 
 - **Budgets je Kategorie** mit Ampel (grün/gelb/rot) – eigener Tab „Budgets“ +

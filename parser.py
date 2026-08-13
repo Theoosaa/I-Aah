@@ -9,10 +9,12 @@ werden herausgefiltert.
 
 from __future__ import annotations
 
+import csv
+import io
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 import pdfplumber
 
@@ -221,6 +223,127 @@ def parse_pdf(path: str) -> Statement:
                     zweck_lines.append(s)
     flush()
     stmt.transactions = transactions
+    return stmt
+
+
+# ---------------------------------------------------------------------------
+# CSV-Import (generisch, viele Banken: ING, Sparkasse/CAMT-CSV, DKB, …)
+# ---------------------------------------------------------------------------
+CSV_DATE_KEYS = ("buchungstag", "buchung", "buchungsdatum", "datum", "valuta", "date")
+CSV_AMOUNT_KEYS = ("betrag", "umsatz", "amount", "wert")
+CSV_PAYEE_KEYS = ("auftraggeber", "empf", "begüns", "beguns", "beguenstigt",
+                  "name", "zahlungspflicht", "beteiligter", "payee")
+CSV_PURPOSE_KEYS = ("verwendungszweck", "buchungstext", "zweck", "vwz",
+                    "verwendung", "text")
+
+
+def sniff_csv(path):
+    """Liest eine CSV: (Zeilen, Trennzeichen, Encoding)."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("latin-1", "replace")
+    sample = text[:4000]
+    delim = ";"
+    counts = {d: sample.count(d) for d in (";", ",", "\t", "|")}
+    delim = max(counts, key=counts.get) if max(counts.values()) else ";"
+    rows = [r for r in csv.reader(io.StringIO(text), delimiter=delim)
+            if any(c.strip() for c in r)]
+    return rows, delim, enc
+
+
+def find_header(rows):
+    for i, r in enumerate(rows[:20]):
+        low = [c.strip().lower() for c in r]
+        has_date = any(any(k in c for k in CSV_DATE_KEYS) for c in low)
+        has_amt = any(any(k in c for k in CSV_AMOUNT_KEYS) for c in low)
+        if has_date and has_amt:
+            return i
+    return None
+
+
+def auto_map(header):
+    low = [c.strip().lower() for c in header]
+
+    def find(keys):
+        for i, c in enumerate(low):
+            if any(k in c for k in keys):
+                return i
+        return None
+    return {"datum": find(CSV_DATE_KEYS), "betrag": find(CSV_AMOUNT_KEYS),
+            "empfaenger": find(CSV_PAYEE_KEYS), "zweck": find(CSV_PURPOSE_KEYS)}
+
+
+def parse_amount_flex(s):
+    s = (s or "").strip().replace("€", "").replace("EUR", "").replace(" ", "")
+    if not s:
+        return None
+    neg = s.startswith("-") or s.endswith("-")
+    s = s.replace("+", "").strip("-")
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):        # deutsch 1.234,56
+            s = s.replace(".", "").replace(",", ".")
+        else:                                   # englisch 1,234.56
+            s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def parse_date_flex(s):
+    s = (s or "").strip()
+    for fmt in ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_csv(path, mapping=None):
+    """Liest Buchungen aus einer CSV. mapping=None -> automatische Erkennung."""
+    rows, delim, enc = sniff_csv(path)
+    if mapping is None:
+        hidx = find_header(rows)
+        if hidx is None:
+            raise ValueError("Kopfzeile mit Datum/Betrag nicht gefunden – "
+                             "bitte Spalten manuell zuordnen.")
+        mapping = auto_map(rows[hidx])
+        data_rows = rows[hidx + 1:]
+    else:
+        data_rows = rows
+    if mapping.get("datum") is None or mapping.get("betrag") is None:
+        raise ValueError("Datum- oder Betragsspalte nicht zugeordnet.")
+    quelle = os.path.basename(path)
+    stmt = Statement(quelle=quelle)
+    di, bi = mapping["datum"], mapping["betrag"]
+    ei, zi = mapping.get("empfaenger"), mapping.get("zweck")
+    txns = []
+    for r in data_rows:
+        if max(di, bi) >= len(r):
+            continue
+        d = parse_date_flex(r[di])
+        amt = parse_amount_flex(r[bi])
+        if d is None or amt is None:
+            continue
+        empf = r[ei].strip() if ei is not None and ei < len(r) else ""
+        zweck = r[zi].strip() if zi is not None and zi < len(r) else ""
+        txns.append(Transaction(
+            datum=d, buchungsart="CSV", empfaenger=empf or zweck[:30],
+            zweck=zweck, betrag=amt, monat=f"{d.year:04d}-{d.month:02d}",
+            quelle=quelle))
+    stmt.transactions = txns
     return stmt
 
 
