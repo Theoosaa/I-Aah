@@ -26,7 +26,8 @@ from matplotlib.backends.backend_tkagg import (  # noqa: E402
     FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.figure import Figure  # noqa: E402
 
-from parser import Transaction, parse_pdf  # noqa: E402
+import parser as pmod  # noqa: E402
+from parser import Transaction, parse_csv, parse_pdf  # noqa: E402
 
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "settings.json")
@@ -38,6 +39,16 @@ UNASSIGNED = "Nicht zugeordnet"
 INCOME_CAT = "Einkommen"
 SCHEMA_VERSION = 2
 
+# Farbschemata fuer Hell-/Dunkelmodus
+THEMES = {
+    "light": {"bg": "#f0f0f0", "card": "#f3f5f7", "fg": "#222222", "muted": "#666666",
+              "tree_bg": "#ffffff", "tree_sel": "#cfe3ff", "tint_to": (255, 255, 255),
+              "mpl_face": "#ffffff", "mpl_ax": "#ffffff"},
+    "dark": {"bg": "#232629", "card": "#2b2f33", "fg": "#e6e6e6", "muted": "#a0a0a0",
+             "tree_bg": "#2b2f33", "tree_sel": "#37474f", "tint_to": (43, 47, 51),
+             "mpl_face": "#232629", "mpl_ax": "#2b2f33"},
+}
+
 
 def atomic_write_json(path: str, data) -> None:
     """Schreibt JSON sicher: erst in Temp-Datei, Backup der alten, dann ersetzen.
@@ -47,6 +58,23 @@ def atomic_write_json(path: str, data) -> None:
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    if os.path.exists(path):
+        try:
+            bak = f"{path}.bak"
+            if os.path.exists(bak):
+                os.remove(bak)
+            os.replace(path, bak)
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def atomic_write_bytes(path: str, blob: bytes) -> None:
+    tmp = f"{path}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(blob)
         f.flush()
         os.fsync(f.fileno())
     if os.path.exists(path):
@@ -128,10 +156,13 @@ CHART_TOP = "Top-Empfänger"
 CHART_BALANCE = "Saldo-Verlauf (relativ)"
 CHART_REAL_BALANCE = "Echter Kontostand"
 CHART_BUDGET = "Budget-Ampel"
+CHART_SANKEY = "Geldfluss (Sankey)"
+CHART_HEATMAP = "Kalender-Heatmap"
+CHART_YOY = "Jahresvergleich"
 
-CHART_TYPES = [CHART_OVERVIEW, CHART_PIE, CHART_COMPARE, CHART_TREND,
-               CHART_STACKED, CHART_RECURRING, CHART_BUDGET, CHART_TOP,
-               CHART_REAL_BALANCE, CHART_BALANCE]
+CHART_TYPES = [CHART_OVERVIEW, CHART_PIE, CHART_SANKEY, CHART_COMPARE, CHART_TREND,
+               CHART_STACKED, CHART_YOY, CHART_RECURRING, CHART_BUDGET, CHART_TOP,
+               CHART_HEATMAP, CHART_REAL_BALANCE, CHART_BALANCE]
 
 CHART_CAPTIONS = {
     CHART_OVERVIEW:
@@ -172,6 +203,18 @@ CHART_CAPTIONS = {
         "Deine Monatsbudgets je Kategorie als Ampel: grün = im Rahmen, gelb = "
         "fast erreicht, rot = überzogen. Budgets legst du im Tab „Budgets“ fest. "
         "Am aussagekräftigsten für einen einzelnen Monat.",
+    CHART_SANKEY:
+        "Wohin fließt dein Geld? Von den Einnahmen (links) verzweigen die Ströme "
+        "zu den Ausgabe-Kategorien und zum gesparten Rest (rechts). Die Breite "
+        "eines Stroms entspricht dem Betrag.",
+    CHART_HEATMAP:
+        "Jeder Tag ein Kästchen, je dunkler desto höher die Ausgaben. Zeigt "
+        "Muster über Wochen/Monate – etwa teure Wochenenden oder Monatsanfänge. "
+        "Am besten mit Zeitraum „Alle“ oder einem ganzen Jahr.",
+    CHART_YOY:
+        "Vergleicht die Monatsausgaben verschiedener Jahre (eine Linie je Jahr, "
+        "Januar–Dezember). Zeigt, ob du dieses Jahr mehr oder weniger ausgibst "
+        "als im Vorjahr. Braucht Auszüge aus mehreren Jahren.",
 }
 
 
@@ -424,6 +467,10 @@ class KontoApp(tk.Tk):
         self.loaded_files: list[str] = []
         self.statements: list[dict] = []        # Auszugs-Metadaten (Saldo etc.)
         self._undo_stack: list = []             # fuer Undo von Zuordnungen
+        self.theme = "light"
+        self._encrypted = False                 # data.json verschluesselt?
+        self._enc_key = None
+        self._enc_salt = None
 
         self._build_style()
         self._build_menu()
@@ -439,7 +486,8 @@ class KontoApp(tk.Tk):
         self._refresh_category_widgets()
         self._load_data()                 # zuletzt gespeicherte Buchungen laden
         self._rebuild_month_filters()
-        self._load_ui_state()             # Fenstergroesse + letzte Filter
+        self._load_ui_state()             # Fenstergroesse + letzte Filter + Theme
+        self._apply_theme()
         self.refresh_table()
         self._update_status()
 
@@ -459,11 +507,67 @@ class KontoApp(tk.Tk):
         style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
         style.configure("Big.TLabel", font=("Segoe UI", 11, "bold"))
 
+    def _T(self, key):
+        return THEMES[self.theme][key]
+
+    def _toggle_theme(self):
+        self.theme = "dark" if self._dark_var.get() else "light"
+        self._apply_theme()
+
+    def _apply_theme(self):
+        t = THEMES[self.theme]
+        style = ttk.Style(self)
+        self.configure(bg=t["bg"])
+        for el in ("TFrame", "TLabelframe", "TLabelframe.Label", "TLabel",
+                   "TNotebook", "TCheckbutton"):
+            style.configure(el, background=t["bg"], foreground=t["fg"])
+        style.configure("TNotebook.Tab", background=t["card"], foreground=t["fg"])
+        style.configure("Treeview", background=t["tree_bg"],
+                        fieldbackground=t["tree_bg"], foreground=t["fg"])
+        style.map("Treeview", background=[("selected", t["tree_sel"])])
+        style.configure("Treeview.Heading", background=t["card"], foreground=t["fg"])
+        style.configure("Big.TLabel", background=t["bg"], foreground=t["fg"])
+        for card in getattr(self, "kpi_cards", {}).values():
+            for key in ("frame", "title", "value", "delta"):
+                card[key].configure(bg=t["card"])
+            card["title"].configure(fg=t["muted"])
+        if hasattr(self, "chart_caption"):
+            self.chart_caption.configure(bg=t["bg"], fg=t["muted"])
+        if hasattr(self, "cat_list"):
+            self.cat_list.configure(bg=t["tree_bg"], fg=t["fg"])
+        if hasattr(self, "cat_list"):
+            self._refresh_category_widgets()
+        if hasattr(self, "fig"):
+            self.draw_chart()
+
+    def _style_fig(self):
+        """Diagramm an das aktuelle Theme anpassen (v. a. fuer Dark Mode)."""
+        t = THEMES[self.theme]
+        self.fig.set_facecolor(t["mpl_face"])
+        if self.theme == "light":
+            return
+        fg = t["fg"]
+        for ax in self.fig.get_axes():
+            ax.set_facecolor(t["mpl_ax"])
+            ax.title.set_color(fg)
+            ax.xaxis.label.set_color(fg)
+            ax.yaxis.label.set_color(fg)
+            ax.tick_params(colors=fg)
+            for s in ax.spines.values():
+                s.set_color(fg)
+            for txt in ax.texts:
+                txt.set_color(fg)
+            leg = ax.get_legend()
+            if leg:
+                for txt in leg.get_texts():
+                    txt.set_color(fg)
+
     def _build_menu(self):
         m = tk.Menu(self)
         filem = tk.Menu(m, tearoff=0)
         filem.add_command(label="PDF(s) laden…", command=self.load_pdfs)
         filem.add_command(label="Ordner laden…", command=self.load_folder)
+        filem.add_command(label="CSV importieren…", command=self.load_csv)
         filem.add_separator()
         exp = tk.Menu(filem, tearoff=0)
         exp.add_command(label="Buchungen als CSV…", command=self.export_csv)
@@ -476,6 +580,17 @@ class KontoApp(tk.Tk):
         filem.add_separator()
         filem.add_command(label="Beenden", command=self._on_close)
         m.add_cascade(label="Datei", menu=filem)
+
+        viewm = tk.Menu(m, tearoff=0)
+        self._dark_var = tk.BooleanVar(value=False)
+        viewm.add_checkbutton(label="Dark Mode", variable=self._dark_var,
+                              command=self._toggle_theme)
+        m.add_cascade(label="Ansicht", menu=viewm)
+
+        secm = tk.Menu(m, tearoff=0)
+        secm.add_command(label="Passwortschutz für Daten…",
+                         command=self.toggle_encryption)
+        m.add_cascade(label="Datenschutz", menu=secm)
         self.config(menu=m)
 
     # ---- Tab 1: Transaktionen ------------------------------------------
@@ -615,15 +730,16 @@ class KontoApp(tk.Tk):
     def _make_kpi_card(self, parent, title):
         card = tk.Frame(parent, bg="#f3f5f7", bd=1, relief="solid")
         card.pack(side="left", fill="both", expand=True, padx=4)
-        tk.Label(card, text=title, bg="#f3f5f7", fg="#667",
-                 font=("Segoe UI", 8)).pack(anchor="w", padx=10, pady=(6, 0))
+        titlelbl = tk.Label(card, text=title, bg="#f3f5f7", fg="#667",
+                            font=("Segoe UI", 8))
+        titlelbl.pack(anchor="w", padx=10, pady=(6, 0))
         val = tk.Label(card, text="–", bg="#f3f5f7", fg="#222",
                        font=("Segoe UI", 15, "bold"))
         val.pack(anchor="w", padx=10)
         delta = tk.Label(card, text="", bg="#f3f5f7", fg="#888",
                          font=("Segoe UI", 8))
         delta.pack(anchor="w", padx=10, pady=(0, 6))
-        return {"value": val, "delta": delta}
+        return {"frame": card, "title": titlelbl, "value": val, "delta": delta}
 
     # ---- Tab 3: Kategorien & Regeln ------------------------------------
     def _build_tab_settings(self):
@@ -741,15 +857,103 @@ class KontoApp(tk.Tk):
             return
         self._ingest(sorted(paths))
 
-    def _ingest(self, paths):
+    def load_csv(self):
+        path = filedialog.askopenfilename(
+            title="CSV-Datei importieren",
+            filetypes=[("CSV-Dateien", "*.csv"), ("Alle Dateien", "*.*")])
+        if not path:
+            return
+        try:
+            rows, delim, enc = pmod.sniff_csv(path)
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("CSV-Import", f"Datei nicht lesbar:\n{ex}")
+            return
+        hidx = pmod.find_header(rows)
+        if hidx is not None:
+            m = pmod.auto_map(rows[hidx])
+            if m["datum"] is not None and m["betrag"] is not None:
+                try:
+                    stmt = parse_csv(path)
+                except Exception as ex:  # noqa: BLE001
+                    messagebox.showerror("CSV-Import", str(ex))
+                    return
+                self._finish_ingest([(path, stmt)])
+                return
+        # keine sichere Auto-Erkennung -> Spalten manuell zuordnen
+        CsvMappingDialog(self, path, rows, hidx,
+                         on_done=lambda mp: self._import_csv_mapping(path, mp))
+
+    def _import_csv_mapping(self, path, mapping):
+        try:
+            stmt = parse_csv(path, mapping=mapping)
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("CSV-Import", str(ex))
+            return
+        self._finish_ingest([(path, stmt)])
+
+    def _ingest(self, paths, threaded=True):
+        """Liest PDFs ein. threaded=True: im Hintergrund mit Fortschrittsbalken."""
+        paths = list(paths)
+        if not threaded or len(paths) <= 1:
+            results = [(p, self._safe_parse(p)) for p in paths]
+            self._finish_ingest(results)
+            return
+        import threading
+        import queue as _queue
+        q = _queue.Queue()
+        dlg, bar, lbl = self._progress_dialog(len(paths))
+
+        def worker():
+            for p in paths:
+                q.put((p, self._safe_parse(p)))
+            q.put(("__done__", None))
+        threading.Thread(target=worker, daemon=True).start()
+        results = []
+
+        def poll():
+            import queue as _q
+            try:
+                while True:
+                    p, res = q.get_nowait()
+                    if p == "__done__":
+                        dlg.destroy()
+                        self._finish_ingest(results)
+                        return
+                    results.append((p, res))
+                    bar["value"] = len(results)
+                    lbl.config(text=f"{len(results)}/{len(paths)}: "
+                                    f"{os.path.basename(p)}")
+            except _q.Empty:
+                pass
+            self.after(80, poll)
+        self.after(80, poll)
+
+    @staticmethod
+    def _safe_parse(path):
+        try:
+            return parse_pdf(path)
+        except Exception as ex:  # noqa: BLE001
+            return ex
+
+    def _progress_dialog(self, n):
+        dlg = tk.Toplevel(self)
+        dlg.title("Einlesen…")
+        dlg.transient(self)
+        dlg.geometry("360x90")
+        lbl = ttk.Label(dlg, text="Starte…")
+        lbl.pack(padx=16, pady=(14, 6))
+        bar = ttk.Progressbar(dlg, length=320, maximum=n, mode="determinate")
+        bar.pack(padx=16, pady=(0, 12))
+        dlg.update_idletasks()
+        return dlg, bar, lbl
+
+    def _finish_ingest(self, results):
         added = files = errors = 0
         err_msgs, warn_msgs = [], []
-        for p in paths:
-            try:
-                stmt = parse_pdf(p)
-            except Exception as ex:  # noqa: BLE001
+        for p, stmt in results:
+            if isinstance(stmt, Exception):
                 errors += 1
-                err_msgs.append(f"{os.path.basename(p)}: {ex}")
+                err_msgs.append(f"{os.path.basename(p)}: {stmt}")
                 continue
             if not stmt.transactions:
                 warn_msgs.append(f"{stmt.quelle}: keine Buchungen erkannt "
@@ -840,10 +1044,19 @@ class KontoApp(tk.Tk):
         if not os.path.exists(DATA_FILE):
             return
         try:
-            with open(DATA_FILE, encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError):
+            with open(DATA_FILE, "rb") as f:
+                raw = f.read()
+        except OSError:
             return
+        if raw.startswith(b"IAAHENC1"):
+            data = self._load_encrypted(raw)
+            if data is None:
+                return
+        else:
+            try:
+                data = json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return
         self.loaded_files = data.get("files", [])
         self.statements = data.get("statements", [])
         for d in data.get("transactions", []):
@@ -860,14 +1073,113 @@ class KontoApp(tk.Tk):
         self.transactions.sort(key=lambda x: (x.datum, x.empfaenger))
 
     def _save_data(self):
+        payload = {"version": SCHEMA_VERSION,
+                   "files": self.loaded_files,
+                   "statements": self.statements,
+                   "transactions": [t.to_dict() for t in self.transactions]}
         try:
-            payload = {"version": SCHEMA_VERSION,
-                       "files": self.loaded_files,
-                       "statements": self.statements,
-                       "transactions": [t.to_dict() for t in self.transactions]}
-            atomic_write_json(DATA_FILE, payload)
+            if self._encrypted and self._enc_key:
+                import base64
+                Fernet = self._crypto()[0]
+                raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                token = Fernet(self._enc_key).encrypt(raw)
+                blob = b"IAAHENC1\n" + base64.b64encode(self._enc_salt) + b"\n" + token
+                atomic_write_bytes(DATA_FILE, blob)
+            else:
+                atomic_write_json(DATA_FILE, payload)
         except OSError:
             pass
+
+    # -- Verschluesselung (optionaler Passwortschutz) --------------------
+    @staticmethod
+    def _crypto():
+        try:
+            from cryptography.fernet import Fernet
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+            return Fernet, PBKDF2HMAC, hashes
+        except ImportError:
+            return None
+
+    def _derive_key(self, password: str, salt: bytes) -> bytes:
+        import base64
+        _, PBKDF2HMAC, hashes = self._crypto()
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                         iterations=200_000)
+        return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+
+    def _load_encrypted(self, raw: bytes):
+        """Entschluesselt data.json; fragt nach dem Passwort. None = abgebrochen."""
+        from tkinter import simpledialog
+        from cryptography.fernet import InvalidToken
+        if self._crypto() is None:
+            messagebox.showerror("Verschlüsselung",
+                                 "data.json ist verschlüsselt, aber das Paket "
+                                 "„cryptography“ fehlt.\n\n  pip install cryptography")
+            return None
+        import base64
+        try:
+            _, b_salt, token = raw.split(b"\n", 2)
+            salt = base64.b64decode(b_salt)
+        except Exception:  # noqa: BLE001
+            messagebox.showerror("Verschlüsselung", "Datei beschädigt.")
+            return None
+        Fernet = self._crypto()[0]
+        while True:
+            pw = simpledialog.askstring("Passwort",
+                                        "Passwort für deine gespeicherten Daten:",
+                                        show="*", parent=self)
+            if pw is None:
+                return None
+            key = self._derive_key(pw, salt)
+            try:
+                data = json.loads(Fernet(key).decrypt(token).decode("utf-8"))
+            except InvalidToken:
+                messagebox.showerror("Passwort", "Falsches Passwort. Erneut versuchen.")
+                continue
+            self._encrypted = True
+            self._enc_key = key
+            self._enc_salt = salt
+            return data
+
+    def toggle_encryption(self):
+        if self._crypto() is None:
+            messagebox.showinfo(
+                "Passwortschutz",
+                "Der Passwortschutz benötigt das Paket „cryptography“.\n\n"
+                "  pip install cryptography")
+            return
+        from tkinter import simpledialog
+        if not self._encrypted:
+            pw = simpledialog.askstring("Passwort setzen", "Neues Passwort:",
+                                        show="*", parent=self)
+            if not pw:
+                return
+            pw2 = simpledialog.askstring("Passwort bestätigen",
+                                         "Passwort wiederholen:", show="*", parent=self)
+            if pw != pw2:
+                messagebox.showerror("Passwort", "Passwörter stimmen nicht überein.")
+                return
+            self._enc_salt = os.urandom(16)
+            self._enc_key = self._derive_key(pw, self._enc_salt)
+            self._encrypted = True
+            self._save_data()
+            messagebox.showinfo("Passwortschutz",
+                                "Aktiviert. „data.json“ ist jetzt verschlüsselt und "
+                                "verlangt beim Start dein Passwort.")
+        else:
+            pw = simpledialog.askstring("Passwort", "Aktuelles Passwort:",
+                                        show="*", parent=self)
+            if pw is None:
+                return
+            if self._derive_key(pw, self._enc_salt) != self._enc_key:
+                messagebox.showerror("Passwort", "Falsches Passwort.")
+                return
+            self._encrypted = False
+            self._enc_key = None
+            self._save_data()
+            messagebox.showinfo("Passwortschutz",
+                                "Deaktiviert. „data.json“ ist wieder unverschlüsselt.")
 
     # ================================================================
     # Tabelle
@@ -916,14 +1228,15 @@ class KontoApp(tk.Tk):
         for r in self.store.rules:
             self.rule_tree.insert("", tk.END, values=(r["keyword"], r["category"]))
 
-    @staticmethod
-    def _tint(hex_color: str, factor: float = 0.82) -> str:
-        """Helle, dezente Variante einer Farbe fuer Zeilenhintergruende."""
+    def _tint(self, hex_color: str, factor: float = 0.82) -> str:
+        """Dezente Variante einer Farbe fuer Zeilenhintergruende (Theme-abhängig)."""
         hex_color = hex_color.lstrip("#")
         r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
-        r = int(r + (255 - r) * factor)
-        g = int(g + (255 - g) * factor)
-        b = int(b + (255 - b) * factor)
+        tr, tg, tb = THEMES[self.theme]["tint_to"]
+        f = factor if self.theme == "light" else 0.72
+        r = int(r + (tr - r) * f)
+        g = int(g + (tg - g) * f)
+        b = int(b + (tb - b) * f)
         return f"#{r:02x}{g:02x}{b:02x}"
 
     def _filtered(self) -> list[Transaction]:
@@ -1331,9 +1644,10 @@ class KontoApp(tk.Tk):
         self.kpi_cards["expense"]["value"].config(text=eur(cur["expense"]), fg="#c62828")
         self.kpi_cards["net"]["value"].config(
             text=eur(cur["net"]), fg="#2e7d32" if cur["net"] >= 0 else "#c62828")
+        neutral = self._T("fg")
         self.kpi_cards["rate"]["value"].config(
-            text=(f"{cur['rate']:.0f} %" if cur["rate"] is not None else "–"), fg="#222")
-        self.kpi_cards["avg"]["value"].config(text=eur(cur["avg"]), fg="#222")
+            text=(f"{cur['rate']:.0f} %" if cur["rate"] is not None else "–"), fg=neutral)
+        self.kpi_cards["avg"]["value"].config(text=eur(cur["avg"]), fg=neutral)
         self.kpi_cards["avg"]["delta"].config(
             text=f"Basis: {cur['nmonths']} Monat(e)", fg="#999")
 
@@ -1373,6 +1687,7 @@ class KontoApp(tk.Tk):
             ax.axis("off")
             self._clear_kpis()
             self.chart_caption.config(text="")
+            self._style_fig()
             self.canvas.draw()
             return
 
@@ -1387,6 +1702,7 @@ class KontoApp(tk.Tk):
             self.fig.tight_layout()
         except Exception:  # noqa: BLE001
             pass
+        self._style_fig()
         self.canvas.draw()
 
     def _render_chart(self, kind, data, period):
@@ -1401,6 +1717,12 @@ class KontoApp(tk.Tk):
             self._chart_category_trend(data)
         elif kind == CHART_STACKED:
             self._chart_stacked(data)
+        elif kind == CHART_SANKEY:
+            self._chart_sankey(data)
+        elif kind == CHART_HEATMAP:
+            self._chart_heatmap(data)
+        elif kind == CHART_YOY:
+            self._chart_yoy()
         elif kind == CHART_RECURRING:
             self._chart_recurring(data)
         elif kind == CHART_BUDGET:
@@ -1666,6 +1988,124 @@ class KontoApp(tk.Tk):
             self._drill.append((bar, "payee", name))
         ax.grid(axis="x", alpha=0.3)
 
+    def _chart_sankey(self, data):
+        from matplotlib.path import Path
+        from matplotlib.patches import PathPatch
+        ax = self.fig.add_subplot(111)
+        ax.axis("off")
+        income, expense = self._income_expense(data)
+        cats = [(c, v) for c, v in
+                sorted(self._cat_expense_totals(data).items(), key=lambda x: -x[1])
+                if v > 0]
+        if not cats:
+            ax.text(0.5, 0.5, "Keine Ausgaben im Zeitraum.", ha="center", color="#888")
+            return
+        net = income - expense
+        flows = [(c, v, self._cat_color(c)) for c, v in cats]
+        if net > 0:
+            flows.append(("Gespart", net, "#2e7d32"))
+        total = sum(v for _, v, _ in flows) or 1
+        left_total = max(income, total)
+        gap = 0.02
+        n = len(flows)
+        avail = 1.0 - gap * (n - 1)
+
+        def band(y0t, y0b, y1t, y1b, color):
+            xm = 0.5
+            verts = [(0.08, y0b), (0.08, y0t), (xm, y0t), (xm, y1t), (0.92, y1t),
+                     (0.92, y1b), (xm, y1b), (xm, y0b), (0.08, y0b)]
+            codes = [Path.MOVETO, Path.LINETO, Path.CURVE4, Path.CURVE4, Path.CURVE4,
+                     Path.LINETO, Path.CURVE4, Path.CURVE4, Path.CURVE4]
+            ax.add_patch(PathPatch(Path(verts, codes), fc=color, ec="none", alpha=0.55))
+
+        yl = 1.0
+        yr = 1.0
+        for name, v, color in flows:
+            hl = v / left_total
+            hr = (v / total) * avail
+            band(yl, yl - hl, yr, yr - hr, color)
+            ax.text(0.93, yr - hr / 2, f"{name}  {eur(v)}", va="center",
+                    fontsize=8, ha="left")
+            yl -= hl
+            yr -= hr + gap
+        ax.add_patch(PathPatch(Path([(0.0, 1.0), (0.08, 1.0), (0.08, 1.0 - income / left_total),
+                                     (0.0, 1.0 - income / left_total), (0.0, 1.0)]),
+                               fc="#2e7d32", ec="none"))
+        ax.text(0.04, 1.02, f"Einnahmen {eur(income)}", ha="center", fontsize=9,
+                fontweight="bold")
+        ax.set_xlim(-0.02, 1.4)
+        ax.set_ylim(min(0, yr) - 0.02, 1.06)
+        ax.set_title("Geldfluss: Einnahmen → Ausgaben & Ersparnis")
+
+    def _chart_heatmap(self, data):
+        import datetime as _dt
+        ax = self.fig.add_subplot(111)
+        daily = defaultdict(float)
+        for t in data:
+            for cat, amt in self.store.parts(t):
+                if cat == INCOME_CAT or self.store.is_excluded(cat):
+                    continue
+                if amt < 0:
+                    daily[t.datum] += -amt
+        if not daily:
+            ax.text(0.5, 0.5, "Keine Ausgaben im Zeitraum.", ha="center", color="#888")
+            ax.axis("off")
+            return
+        start = min(daily)
+        end = max(daily)
+        start -= _dt.timedelta(days=start.weekday())      # Montag der ersten Woche
+        weeks = (end - start).days // 7 + 1
+        grid = [[float("nan")] * weeks for _ in range(7)]
+        d = start
+        while d <= end:
+            col = (d - start).days // 7
+            grid[d.weekday()][col] = daily.get(d, 0.0)
+            d += _dt.timedelta(days=1)
+        import numpy as np
+        arr = np.array(grid)
+        im = ax.imshow(arr, aspect="auto", cmap="YlOrRd", origin="upper")
+        ax.set_yticks(range(7))
+        ax.set_yticklabels(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"], fontsize=8)
+        # Monatsbeschriftung auf der x-Achse
+        ticks, labels, last = [], [], None
+        for col in range(weeks):
+            wd = start + _dt.timedelta(weeks=col)
+            mon = wd.strftime("%b %y")
+            if mon != last:
+                ticks.append(col)
+                labels.append(mon)
+                last = mon
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
+        cbar = self.fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
+        cbar.set_label("Ausgaben/Tag (EUR)", fontsize=8)
+        ax.set_title("Kalender-Heatmap der Tagesausgaben")
+
+    def _chart_yoy(self):
+        ax = self.fig.add_subplot(111)
+        years = sorted({t.monat[:4] for t in self.transactions})
+        if len(years) < 2:
+            ax.text(0.5, 0.5, "Jahresvergleich braucht Auszüge aus mind. 2 Jahren.\n"
+                    "(Aktuell nur ein Jahr geladen.)",
+                    ha="center", va="center", color="#888")
+            ax.axis("off")
+            return
+        for y in years:
+            ytx = [t for t in self.transactions if t.monat[:4] == y]
+            vals = []
+            for m in range(1, 13):
+                sub = [t for t in ytx if int(t.monat[5:7]) == m]
+                _, e = self._income_expense(sub)
+                vals.append(e if sub else float("nan"))
+            ax.plot(range(1, 13), vals, marker="o", lw=2, label=y)
+        ax.set_xticks(range(1, 13))
+        ax.set_xticklabels(["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul",
+                            "Aug", "Sep", "Okt", "Nov", "Dez"], fontsize=8)
+        ax.set_ylabel("Ausgaben (EUR)")
+        ax.set_title("Jahresvergleich – Ausgaben je Monat")
+        ax.legend(frameon=False, fontsize=9)
+        ax.grid(alpha=0.3)
+
     def _chart_real_balance(self, period):
         ax = self.fig.add_subplot(111)
         metas = [s for s in self.statements if s.get("alter_saldo") is not None]
@@ -1918,6 +2358,9 @@ class KontoApp(tk.Tk):
                 self.geometry(g)
             except tk.TclError:
                 pass
+        if data.get("theme") in THEMES:
+            self.theme = data["theme"]
+            self._dark_var.set(self.theme == "dark")
         fl = data.get("filters", {})
         for name, widget in [("month", self.filter_month), ("cat", self.filter_cat),
                              ("konto", self.filter_konto), ("type", self.filter_type),
@@ -1929,6 +2372,7 @@ class KontoApp(tk.Tk):
 
     def _save_ui_state(self):
         data = {"geometry": self.geometry(),
+                "theme": self.theme,
                 "filters": {"month": self.filter_month.get(),
                             "cat": self.filter_cat.get(),
                             "konto": self.filter_konto.get(),
@@ -2157,6 +2601,69 @@ class SplitDialog(tk.Toplevel):
         if self.on_done:
             self.on_done()
         self.destroy()
+
+
+class CsvMappingDialog(tk.Toplevel):
+    """Ordnet CSV-Spalten den Feldern Datum/Betrag/Empfänger/Zweck zu."""
+
+    def __init__(self, parent, path, rows, hidx, on_done=None):
+        super().__init__(parent)
+        self.title("CSV-Spalten zuordnen")
+        self.on_done = on_done
+        self.transient(parent)
+        self.grab_set()
+        ncols = max((len(r) for r in rows[:30]), default=0)
+        if hidx is not None:
+            header = rows[hidx]
+            self.col_labels = [f"{i + 1}: {header[i]}" if i < len(header)
+                               else f"Spalte {i + 1}" for i in range(ncols)]
+            guess = pmod.auto_map(header)
+        else:
+            self.col_labels = [f"Spalte {i + 1}" for i in range(ncols)]
+            guess = {"datum": None, "betrag": None, "empfaenger": None, "zweck": None}
+
+        ttk.Label(self, text=f"Datei: {os.path.basename(path)}",
+                  font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=14, pady=(12, 2))
+        ttk.Label(self, text="Ordne die Spalten zu (Datum und Betrag sind Pflicht):",
+                  foreground="#555").pack(anchor="w", padx=14)
+        opts = ["(keine)"] + self.col_labels
+        self.combos = {}
+        grid = ttk.Frame(self)
+        grid.pack(padx=14, pady=8, anchor="w")
+        for i, (key, lab, req) in enumerate([
+                ("datum", "Datum *", True), ("betrag", "Betrag *", True),
+                ("empfaenger", "Empfänger", False), ("zweck", "Verwendungszweck", False)]):
+            ttk.Label(grid, text=lab, width=16).grid(row=i, column=0, sticky="w", pady=2)
+            cb = ttk.Combobox(grid, values=opts, state="readonly", width=32)
+            g = guess.get(key)
+            cb.current(g + 1 if g is not None else 0)
+            cb.grid(row=i, column=1, pady=2)
+            self.combos[key] = cb
+        # Vorschau
+        prev = rows[(hidx + 1):(hidx + 4)] if hidx is not None else rows[:3]
+        if prev:
+            ttk.Label(self, text="Vorschau erste Zeilen:", foreground="#555").pack(
+                anchor="w", padx=14)
+            txt = "\n".join(" | ".join(c[:14] for c in r[:6]) for r in prev)
+            tk.Label(self, text=txt, justify="left", font=("Consolas", 8),
+                     fg="#444").pack(anchor="w", padx=14, pady=(0, 6))
+        b = ttk.Frame(self)
+        b.pack(pady=10)
+        ttk.Button(b, text="Importieren", command=self._ok).pack(side="left", padx=4)
+        ttk.Button(b, text="Abbrechen", command=self.destroy).pack(side="left", padx=4)
+        self.wait_window()
+
+    def _ok(self):
+        def idx(key):
+            v = self.combos[key].current()
+            return None if v == 0 else v - 1
+        mapping = {k: idx(k) for k in ("datum", "betrag", "empfaenger", "zweck")}
+        if mapping["datum"] is None or mapping["betrag"] is None:
+            messagebox.showwarning("CSV-Import", "Datum und Betrag müssen zugeordnet sein.")
+            return
+        self.destroy()
+        if self.on_done:
+            self.on_done(mapping)
 
 
 if __name__ == "__main__":

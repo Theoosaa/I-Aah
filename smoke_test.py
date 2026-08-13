@@ -18,7 +18,7 @@ with mock.patch.object(K.messagebox, "showinfo"), \
      mock.patch.object(K.messagebox, "showerror"):
     app = K.KontoApp()
     app.store.path = K.SETTINGS_FILE
-    app._ingest([PDF])
+    app._ingest([PDF], threaded=False)
 
     print("Buchungen:", len(app.transactions))
     assert len(app.transactions) == 48, "erwartete 48 Buchungen"
@@ -152,10 +152,34 @@ with mock.patch.object(K.messagebox, "showinfo"), \
     assert os.path.exists(csvpath), "CSV nicht exportiert"
     os.remove(csvpath)
 
+    # CSV-Import (Auto-Erkennung, deutsches Zahlenformat)
+    csvin = os.path.join(os.path.dirname(__file__), "_test_import.csv")
+    with open(csvin, "w", encoding="utf-8") as f:
+        f.write("Buchungstag;Betrag;Auftraggeber/Empfänger;Verwendungszweck\n")
+        f.write("01.07.2026;-12,34;REWE Markt;Einkauf\n")
+        f.write("02.07.2026;1.234,56;Arbeitgeber GmbH;Gehalt Juli\n")
+    st_csv = K.parse_csv(csvin)
+    assert len(st_csv.transactions) == 2, "CSV-Import Zeilenzahl falsch"
+    assert abs(st_csv.transactions[1].betrag - 1234.56) < 0.01, "CSV-Betrag falsch"
+    assert abs(st_csv.transactions[0].betrag + 12.34) < 0.01, "CSV-Vorzeichen falsch"
+    os.remove(csvin)
+    print("CSV-Import (Auto) OK")
+
     # UI-State speichern/laden
     app._save_ui_state()
     assert os.path.exists(K.UI_FILE), "UI-State nicht gespeichert"
     print("CSV-Export + UI-State OK")
+
+    # Dark Mode: umschalten und alle Charts fehlerfrei zeichnen
+    app._dark_var.set(True)
+    app._toggle_theme()
+    assert app.theme == "dark", "Theme nicht umgeschaltet"
+    for i in range(len(K.CHART_TYPES)):
+        app.chart_type.current(i)
+        app.draw_chart()
+    app._dark_var.set(False)
+    app._toggle_theme()
+    print("Dark Mode + alle Charts OK")
 
     app.destroy()
 
@@ -166,10 +190,32 @@ with mock.patch.object(K.messagebox, "showinfo"), \
     assert len(app2.transactions) == 48, \
         f"Persistenz: erwartet 48 geladen, war {len(app2.transactions)}"
     # erneutes Einlesen desselben PDFs darf nichts duplizieren
-    app2._ingest([PDF])
+    app2._ingest([PDF], threaded=False)
     assert len(app2.transactions) == 48, "Dedupe ueber Neustart fehlgeschlagen"
     print("Persistenz: 48 Buchungen aus data.json geladen, Dedupe OK")
     app2.destroy()
+
+    # Verschlüsselung: aktivieren, verschlüsselt speichern, mit Passwort neu laden
+    if K.KontoApp._crypto() is not None:
+        app3 = K.KontoApp()
+        app3.store.path = K.SETTINGS_FILE
+        n_before = len(app3.transactions)
+        app3._enc_salt = os.urandom(16)
+        app3._enc_key = app3._derive_key("geheim", app3._enc_salt)
+        app3._encrypted = True
+        app3._save_data()
+        app3.destroy()
+        with open(K.DATA_FILE, "rb") as f:
+            assert f.read(8) == b"IAAHENC1", "nicht verschlüsselt gespeichert"
+        import tkinter.simpledialog as sd
+        with mock.patch.object(sd, "askstring", return_value="geheim"):
+            app4 = K.KontoApp()
+            app4.store.path = K.SETTINGS_FILE
+        assert len(app4.transactions) == n_before, "verschlüsselt laden fehlgeschlagen"
+        app4.destroy()
+        print("Verschlüsselung: Speichern/Laden mit Passwort OK")
+    else:
+        print("Verschlüsselung übersprungen (cryptography fehlt)")
 
 for f in (K.SETTINGS_FILE, K.DATA_FILE, K.UI_FILE,
           K.SETTINGS_FILE + ".bak", K.DATA_FILE + ".bak"):

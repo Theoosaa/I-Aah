@@ -225,3 +225,8 @@ data.json
 ui_state.json
 *.bak
 *.tmp
+
+# PyInstaller-Build
+build/
+dist/
+*.spec

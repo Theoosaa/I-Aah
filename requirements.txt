@@ -2,3 +2,7 @@ pdfplumber>=0.11
 matplotlib>=3.7
 # optional – nur fuer den Excel-Export (CSV/PDF gehen ohne):
 openpyxl>=3.1
+# optional – nur fuer den Passwortschutz von data.json:
+cryptography>=42.0
+# optional – nur zum Bauen der .exe (build_exe.bat):
+# pyinstaller>=6.0
