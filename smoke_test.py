@@ -170,6 +170,41 @@ with mock.patch.object(K.messagebox, "showinfo"), \
     assert os.path.exists(K.UI_FILE), "UI-State nicht gespeichert"
     print("CSV-Export + UI-State OK")
 
+    # Markiertes Konto-PDF (koordinaten-bewusster Lesepfad + Overlay)
+    import highlight
+    bookings = list(highlight._iter_bookings(PDF))
+    assert len(bookings) == 48, f"Highlight-Parser: erwartet 48, war {len(bookings)}"
+    src_dates = sorted((t.datum, round(t.betrag, 2)) for t in K.parse_pdf(PDF).transactions)
+    hi_dates = sorted((b.datum, round(b.betrag, 2)) for b in bookings)
+    assert src_dates == hi_dates, "Highlight- und Text-Parser uneinig (Datum/Betrag)"
+    try:
+        import pypdf, reportlab  # noqa: F401
+        have_pdf_libs = True
+    except ImportError:
+        have_pdf_libs = False
+    if have_pdf_libs:
+        st_hi = K.parse_pdf(PDF)
+        buckets = {}
+        for t in st_hi.transactions:
+            buckets.setdefault((t.datum, round(t.betrag, 2)), []).append(
+                app.store.categorize(t))
+        def _resolve(d, a):
+            q = buckets.get((d, round(a, 2)))
+            return q.pop(0) if q else None
+        outpdf = os.path.join(os.path.dirname(__file__), "_test_markiert.pdf")
+        n, cats = highlight.create_highlighted_pdf(
+            PDF, outpdf, _resolve, app.store.color_of)
+        assert n == 48, f"markiert: erwartet 48, war {n}"
+        assert cats, "keine Kategorien in Legende"
+        from pypdf import PdfReader
+        src_pages = len(PdfReader(PDF).pages)
+        out_pages = len(PdfReader(outpdf).pages)
+        assert out_pages == src_pages + 1, "Legendenseite fehlt"
+        os.remove(outpdf)
+        print(f"Markiertes PDF: 48 Buchungen, {len(cats)} Kategorien, +Legende OK")
+    else:
+        print("Markiertes PDF: Overlay übersprungen (pypdf/reportlab fehlen), Parser OK")
+
     # Dark Mode: umschalten und alle Charts fehlerfrei zeichnen
     app._dark_var.set(True)
     app._toggle_theme()
