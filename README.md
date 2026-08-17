@@ -8,6 +8,11 @@ ganzes Jahr mit Grafiken zu analysieren.
 
 ## Neu in Version 3
 
+- **Markiertes Konto-PDF:** *Datei → Exportieren → Markiertes Konto-PDF…* legt
+  hinter jede Buchung im **Original-Auszug** einen halbtransparenten Farbbalken
+  in der Farbe ihrer Kategorie (Haupt- **und** Verwendungszweck-Zeilen als ein
+  Block) und hängt eine Farb-Legende an. Kategorien kommen aus deinen Regeln
+  und manuellen Zuordnungen. Benötigt `pypdf` + `reportlab`.
 - **Neue Diagramme:** Geldfluss-**Sankey** (Einnahmen → Kategorien), **Kalender-
   Heatmap** der Tagesausgaben, **Jahresvergleich** (Ausgaben je Monat pro Jahr).
 - **Dark Mode** (Menü *Ansicht*), Einstellung wird gemerkt.
@@ -127,6 +132,7 @@ beim Start automatisch geladen (siehe „Auszüge laden“).
 |-------|-------|
 | `kontoanalyse.py` | Hauptprogramm mit Oberfläche |
 | `parser.py`       | PDF-Einleser (Buchungen extrahieren) |
+| `highlight.py`    | Markiertes Konto-PDF (Farbbalken + Legende) |
 | `settings.json`   | Kategorien, Regeln, Zuordnungen (persönlich – nicht committen) |
 | `data.json`       | gespeicherte Buchungen (persönlich – nicht committen) |
 | `smoke_test.py`   | Automatischer Test gegen ein echtes PDF |

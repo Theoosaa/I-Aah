@@ -573,6 +573,7 @@ class KontoApp(tk.Tk):
         exp.add_command(label="Buchungen als CSV…", command=self.export_csv)
         exp.add_command(label="Buchungen als Excel…", command=self.export_excel)
         exp.add_command(label="Monats-/Jahresreport als PDF…", command=self.export_report)
+        exp.add_command(label="Markiertes Konto-PDF…", command=self.export_highlighted_pdf)
         filem.add_cascade(label="Exportieren", menu=exp)
         filem.add_separator()
         filem.add_command(label="Geladene Auszüge zurücksetzen",
@@ -2340,6 +2341,58 @@ class KontoApp(tk.Tk):
             self.fig = saved
             self.draw_chart()
         messagebox.showinfo("Export", f"Report gespeichert:\n{path}")
+
+    def export_highlighted_pdf(self):
+        """Erzeugt eine Kopie des Original-Auszugs mit Farbbalken hinter
+        jeder Buchung (nach Kategorie) + Legende. Kategorien kommen aus dem
+        Store, d. h. inkl. deiner manuellen Zuordnungen/Splits."""
+        import highlight
+        src = filedialog.askopenfilename(
+            title="Original-Kontoauszug (PDF) wählen",
+            filetypes=[("PDF-Datei", "*.pdf")])
+        if not src:
+            return
+        # Frisch parsen -> identische Schluessel wie beim Laden, damit
+        # Overrides/Regeln aus dem Store exakt greifen.
+        try:
+            stmt = parse_pdf(src)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("Markiertes PDF",
+                                 f"PDF konnte nicht gelesen werden:\n{e}")
+            return
+        if not stmt.transactions:
+            messagebox.showinfo("Markiertes PDF",
+                                "In diesem PDF wurden keine Buchungen erkannt.")
+            return
+        # (Datum, Betrag) -> Kategorien in Dokumentreihenfolge (Duplikate ok)
+        buckets = {}
+        for t in stmt.transactions:
+            buckets.setdefault((t.datum, round(t.betrag, 2)), []).append(
+                self.store.categorize(t))
+
+        def resolve(d, amt):
+            q = buckets.get((d, round(amt, 2)))
+            return q.pop(0) if q else None
+
+        out = filedialog.asksaveasfilename(
+            title="Markiertes PDF speichern", defaultextension=".pdf",
+            initialfile=os.path.splitext(os.path.basename(src))[0] + "_markiert.pdf",
+            filetypes=[("PDF-Datei", "*.pdf")])
+        if not out:
+            return
+        try:
+            n, cats = highlight.create_highlighted_pdf(
+                src, out, resolve, self.store.color_of)
+        except ImportError as e:
+            messagebox.showinfo("Markiertes PDF", str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("Markiertes PDF",
+                                 f"Konnte nicht erstellt werden:\n{e}")
+            return
+        messagebox.showinfo(
+            "Markiertes PDF",
+            f"{n} Buchungen in {len(cats)} Kategorien markiert:\n{out}")
 
     # ================================================================
     # UI-Zustand (Fenstergroesse + letzte Filter) merken

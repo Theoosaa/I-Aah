@@ -4,5 +4,8 @@ matplotlib>=3.7
 openpyxl>=3.1
 # optional – nur fuer den Passwortschutz von data.json:
 cryptography>=42.0
+# optional – nur fuer das "Markierte Konto-PDF" (Farbbalken im Original-Auszug):
+pypdf>=4.0
+reportlab>=4.0
 # optional – nur zum Bauen der .exe (build_exe.bat):
 # pyinstaller>=6.0
