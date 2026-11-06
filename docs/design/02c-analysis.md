@@ -101,6 +101,12 @@ class Period:
 * `daily_expenses` became `daily_spending` and is **gross** (refunds not subtracted): a refund
   day would otherwise show negative spending in the calendar.
 * `suggestions.py` now uses `merchants.py`; the merchant logic exists once.
+* `budget_status` takes the number of months of the selected period (the caller knows it;
+  counting months with bookings would undercount a quiet month). `year_over_year` and
+  `MonthlySeries` use tuples (immutable results). `Period` keeps `0` for unused fields.
+* Added after review: `kpi_changes`, `bookings`/`transactions_of`, `statements_in_period`,
+  `Period.bounds`, `calendar_grid(..., bounds)`, `CalendarGrid.day_at`, `entries_of_day`,
+  `RecurringPayment.active`/`last_month`.
 
 ## Tests
 

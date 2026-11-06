@@ -12,11 +12,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Final
 
-from iaah.core.analysis.ledger import MONTHS_PER_YEAR, Entry, months_of
+from iaah.core.analysis.ledger import FIRST_MONTH, MONTHS_PER_YEAR, ZERO, Entry, months_of
 from iaah.core.categories import CategoryKind
 from iaah.core.merchants import merchant_key, merchant_label
 
-ZERO: Final = Decimal(0)
 BUDGET_WARNING_RATIO: Final = Decimal("0.8")  # above 80 % of the budget: yellow
 BUDGET_FULL_RATIO: Final = Decimal(1)  # above 100 %: red
 
@@ -61,6 +60,16 @@ class Change:
 
 
 @dataclass(frozen=True, slots=True)
+class KpiChanges:
+    """KPI tiles compared with the previous period."""
+
+    income: Change
+    expense: Change
+    net: Change
+    savings_rate_points: Decimal | None  # difference of the rates; 0.05 = +5 percentage points
+
+
+@dataclass(frozen=True, slots=True)
 class MonthFlow:
     """Cash flow of one month."""
 
@@ -79,7 +88,8 @@ class CategoryChange:
 
 @dataclass(frozen=True, slots=True)
 class MonthlySeries:
-    """Spending per category per month; every series has one value per month."""
+    """Spending per category per month; every series has one value per month. A month in
+    which refunds exceed spending shows zero, so stacked bars never go below the axis."""
 
     months: tuple[str, ...]
     series: dict[str, tuple[Decimal, ...]]
@@ -100,7 +110,7 @@ class MoneyFlow:
 
     income: Decimal
     outflows: tuple[tuple[str, Decimal], ...]  # category, amount; largest first
-    saved: Decimal  # zero if expenses exceed income
+    saved: Decimal  # income minus all outflows, zero if they exceed income
 
 
 class BudgetLevel(StrEnum):
@@ -118,12 +128,8 @@ class BudgetStatus:
     category: str
     limit: Decimal  # monthly budget times months in the period
     spent: Decimal
+    ratio: Decimal  # spent as a fraction of the limit
     level: BudgetLevel
-
-    @property
-    def ratio(self) -> Decimal:
-        """Spent as a fraction of the limit."""
-        return self.spent / self.limit if self.limit else ZERO
 
 
 def totals(entries: Iterable[Entry]) -> Totals:
@@ -146,6 +152,22 @@ def change(current: Decimal, previous: Decimal) -> Change:
     """How much ``current`` differs from ``previous``."""
     difference = current - previous
     return Change(difference, difference / abs(previous) if previous else None)
+
+
+def kpi_changes(current: Kpis, previous: Kpis) -> KpiChanges | None:
+    """Deltas for the KPI tiles; ``None`` if the previous period has no bookings (the tiles
+    then show no delta, as in the legacy app)."""
+    if previous.months == 0:
+        return None
+    now, before = current.totals, previous.totals
+    rates = (now.savings_rate, before.savings_rate)
+    points = rates[0] - rates[1] if rates[0] is not None and rates[1] is not None else None
+    return KpiChanges(
+        income=change(now.income, before.income),
+        expense=change(now.expense, before.expense),
+        net=change(now.net, before.net),
+        savings_rate_points=points,
+    )
 
 
 def monthly_cashflow(entries: Sequence[Entry]) -> list[MonthFlow]:
@@ -171,8 +193,9 @@ def category_comparison(
 ) -> list[CategoryChange]:
     """Spending per category now vs. before – the ``limit`` largest current categories."""
     now, before = expense_by_category(current), expense_by_category(previous)
-    names = sorted(now.keys() | before.keys(), key=lambda name: now.get(name, ZERO), reverse=True)
-    return [CategoryChange(n, now.get(n, ZERO), before.get(n, ZERO)) for n in names[:limit]]
+    rows = [CategoryChange(n, now.get(n, ZERO), before.get(n, ZERO)) for n in now | before]
+    rows.sort(key=lambda row: (-row.current, -row.previous, row.category))
+    return rows[:limit]
 
 
 def monthly_by_category(entries: Sequence[Entry], top: int | None = None) -> MonthlySeries:
@@ -184,7 +207,7 @@ def monthly_by_category(entries: Sequence[Entry], top: int | None = None) -> Mon
     for entry in entries:
         if entry.kind is CategoryKind.EXPENSE:
             cells[entry.category, entry.month] -= entry.amount
-    series = {name: tuple(cells[name, month] for month in months) for name in order}
+    series = {name: tuple(max(cells[name, m], ZERO) for m in months) for name in order}
     return MonthlySeries(months, series)
 
 
@@ -204,9 +227,10 @@ def top_merchants(entries: Iterable[Entry], limit: int) -> list[MerchantTotal]:
 
 def money_flow(entries: Sequence[Entry]) -> MoneyFlow:
     """Income split into spending per category and savings (for the Sankey chart)."""
-    overall = totals(entries)
+    income = totals(entries).income
     outflows = tuple(expense_by_category(entries).items())
-    return MoneyFlow(overall.income, outflows, max(overall.net, ZERO))
+    spent = sum((amount for _, amount in outflows), ZERO)
+    return MoneyFlow(income, outflows, max(income - spent, ZERO))
 
 
 def year_over_year(entries: Sequence[Entry]) -> dict[int, tuple[Decimal | None, ...]]:
@@ -217,7 +241,8 @@ def year_over_year(entries: Sequence[Entry]) -> dict[int, tuple[Decimal | None, 
     years = sorted({entry.day.year for entry in entries})
     return {
         year: tuple(
-            _month_expense(by_month, year, month) for month in range(1, MONTHS_PER_YEAR + 1)
+            _month_expense(by_month, year, month)
+            for month in range(FIRST_MONTH, MONTHS_PER_YEAR + 1)
         )
         for year in years
     }
@@ -226,25 +251,26 @@ def year_over_year(entries: Sequence[Entry]) -> dict[int, tuple[Decimal | None, 
 def budget_status(
     entries: Sequence[Entry], budgets: Mapping[str, Decimal], months: int
 ) -> list[BudgetStatus]:
-    """Each budgeted category against ``budget × months``, fullest first."""
+    """Each budgeted category against ``budget × months`` (at least one month), fullest
+    first. ``months`` is the length of the selected period, which the caller knows best."""
     spent = expense_by_category(entries)
     statuses = [
-        _status(name, budget * months, spent.get(name, ZERO))
+        _status(name, budget * max(months, 1), spent.get(name, ZERO))
         for name, budget in budgets.items()
         if budget > 0
     ]
-    return sorted(statuses, key=lambda status: status.ratio, reverse=True)
+    return sorted(statuses, key=lambda status: (-status.ratio, status.category))
 
 
 def _status(category: str, limit: Decimal, spent: Decimal) -> BudgetStatus:
-    ratio = spent / limit if limit else ZERO
+    ratio = spent / limit
     if ratio > BUDGET_FULL_RATIO:
         level = BudgetLevel.OVER
     elif ratio > BUDGET_WARNING_RATIO:
         level = BudgetLevel.WARNING
     else:
         level = BudgetLevel.OK
-    return BudgetStatus(category, limit, spent, level)
+    return BudgetStatus(category, limit, spent, ratio, level)
 
 
 def _month_expense(by_month: Mapping[str, list[Entry]], year: int, month: int) -> Decimal | None:

@@ -7,11 +7,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Final
 
-from iaah.core.analysis.ledger import Entry, Period, month_range
+from iaah.core.analysis.ledger import ZERO, Entry, Period, month_range
 from iaah.core.categories import CategoryKind
 from iaah.core.models import StatementInfo, Transaction
 
-ZERO: Final = Decimal(0)
 DAYS_PER_WEEK: Final = 7
 ONE_DAY: Final = timedelta(days=1)
 
@@ -44,11 +43,25 @@ class CalendarGrid:
         """Monday of column ``week``."""
         return self.start + timedelta(weeks=week)
 
+    def day_at(self, row: int, week: int) -> date:
+        """The date of a cell (for drill-down on click)."""
+        return self.week_start(week) + timedelta(days=row)
+
 
 def cumulative_flow(transactions: Iterable[Transaction]) -> list[BalancePoint]:
     """Running sum of all bookings, one point per day – the balance relative to the start."""
     ordered = sorted(transactions, key=lambda txn: txn.booking_date)
     return _end_of_day(ordered, ZERO)
+
+
+def statements_in_period(
+    statements: Iterable[StatementInfo], period: Period
+) -> list[StatementInfo]:
+    """Statements whose period lies in ``period`` (all of them for all time; statements without
+    a stated period only then)."""
+    if period.bounds() is None:
+        return list(statements)
+    return [info for info in statements if info.period and _overlaps(info.period, period)]
 
 
 def account_balances(
@@ -57,8 +70,9 @@ def account_balances(
     """The real balance per account: each statement's opening balance plus its bookings.
 
     Bookings belong to a statement through ``Transaction.source``. Statements without an
-    opening balance (CSV exports) are skipped. Each statement adds a point with its opening
-    balance on the first day of its period.
+    opening balance (CSV exports) are skipped. Statements are taken in period order; each
+    starts with its opening balance on the first day of its period, or on its first booking
+    day if that is earlier.
     """
     by_source: dict[str, list[Transaction]] = defaultdict(list)
     for txn in transactions:
@@ -69,10 +83,11 @@ def account_balances(
         bookings = sorted(by_source.get(info.source, []), key=lambda txn: txn.booking_date)
         if info.opening_balance is None or not bookings:
             continue
-        start = _period_start(info.period) or bookings[0].booking_date
+        first_day = bookings[0].booking_date
+        start = min(_period_start(info.period) or first_day, first_day)
         balances[info.account].append(BalancePoint(start, info.opening_balance))
         balances[info.account].extend(_end_of_day(bookings, info.opening_balance))
-    return {account: sorted(points, key=lambda p: p.day) for account, points in balances.items()}
+    return dict(balances)
 
 
 def daily_spending(entries: Iterable[Entry]) -> dict[date, Decimal]:
@@ -85,11 +100,17 @@ def daily_spending(entries: Iterable[Entry]) -> dict[date, Decimal]:
     return dict(spent)
 
 
-def calendar_grid(daily: Mapping[date, Decimal]) -> CalendarGrid | None:
-    """Lay daily spending out as weeks; ``None`` without any day."""
-    if not daily:
+def calendar_grid(
+    daily: Mapping[date, Decimal], bounds: tuple[date, date] | None = None
+) -> CalendarGrid | None:
+    """Lay daily spending out as weeks.
+
+    ``bounds`` (e.g. ``Period.bounds()``) sets the range; without it the range runs from the
+    first to the last day with spending. ``None`` if there is no range at all.
+    """
+    if bounds is None and not daily:
         return None
-    first, last = min(daily), max(daily)
+    first, last = bounds or (min(daily), max(daily))
     start = first - timedelta(days=first.weekday())
     weeks = (last - start).days // DAYS_PER_WEEK + 1
     rows: list[list[Decimal | None]] = [[None] * weeks for _ in range(DAYS_PER_WEEK)]
@@ -119,7 +140,13 @@ def _end_of_day(bookings: Sequence[Transaction], start: Decimal) -> list[Balance
 
 
 def _period_start(period: str) -> date | None:
-    if not period:
-        return None
-    parsed = Period.parse(period)
-    return date(parsed.year, parsed.month, 1)
+    bounds = Period.parse(period).bounds() if period else None
+    return bounds[0] if bounds else None
+
+
+def _overlaps(statement_period: str, period: Period) -> bool:
+    statement_bounds = Period.parse(statement_period).bounds()
+    selected = period.bounds()
+    if statement_bounds is None or selected is None:
+        return True
+    return statement_bounds[0] <= selected[1] and selected[0] <= statement_bounds[1]

@@ -111,7 +111,7 @@ def test_build_entries_expands_splits(entries: list[Entry]) -> None:
         ("Lebensmittel", D("-40.00")),
         ("Sonstiges", D("-60.00")),
     ]
-    assert not next(e for e in entries if e.category == "Umbuchung").counted
+    assert next(e for e in entries if e.category == "Umbuchung").kind is CategoryKind.IGNORED
 
 
 @pytest.mark.parametrize(
@@ -194,8 +194,8 @@ def test_expense_by_category(entries: list[Entry]) -> None:
 
 
 def test_fully_refunded_category_is_left_out() -> None:
-    catalog = _categorizer()
-    refund_only = build_entries([_txn(6, 7, REWE, "10.00", REWE_PURPOSE)], catalog)
+    categorizer = _categorizer()
+    refund_only = build_entries([_txn(6, 7, REWE, "10.00", REWE_PURPOSE)], categorizer)
     assert expense_by_category(refund_only) == {}
 
 
