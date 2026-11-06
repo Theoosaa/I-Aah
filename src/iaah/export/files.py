@@ -16,7 +16,11 @@ PNG: Final = "png"
 
 
 class ExportError(IaahError):
-    """An export file could not be written."""
+    """An export file (or its folder) could not be written; ``path`` names it."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"cannot write {path}")
+        self.path = path
 
 
 def write_export(path: Path, data: bytes) -> None:
@@ -24,7 +28,7 @@ def write_export(path: Path, data: bytes) -> None:
     try:
         path.write_bytes(data)
     except OSError as error:
-        raise ExportError(f"cannot write {path}") from error
+        raise ExportError(path) from error
 
 
 def ensure_folder(folder: Path) -> Path:
@@ -32,7 +36,7 @@ def ensure_folder(folder: Path) -> Path:
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except OSError as error:
-        raise ExportError(f"cannot create folder {folder}") from error
+        raise ExportError(folder) from error
     return folder
 
 

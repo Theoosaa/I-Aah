@@ -7,6 +7,7 @@ from io import BytesIO
 import pytest
 from matplotlib.figure import Figure
 
+from iaah.charts.categories import donut_chart
 from iaah.charts.chart import CAPTIONS, TITLES, Chart, ChartKind, DrillKind
 from iaah.charts.flow import MAX_CATEGORY_BANDS, sankey_chart
 from iaah.charts.gallery import NO_PREVIOUS, ChartInput, build_chart
@@ -179,6 +180,21 @@ def test_donut_names_a_refund_surplus(workspace: Workspace) -> None:
     assert "Shopping" not in _targets(chart, DrillKind.CATEGORY)
     note = chart.figure.axes[0].get_xlabel()
     assert note.startswith("Mehr erstattet als ausgegeben: Shopping")
+
+
+def test_donut_without_spending_still_names_the_surplus() -> None:
+    chart = donut_chart({"Shopping": Decimal("-20.00")}, {}, LIGHT)
+    assert "Mehr erstattet als ausgegeben: Shopping (20,00 €)" in _texts(chart.figure)
+
+
+def test_calendar_labels_a_month_beginning_in_the_first_column(workspace: Workspace) -> None:
+    days = (date(2026, 4, 29), date(2026, 6, 10))
+    bookings = [Transaction(day, "", "Kiosk", "", Decimal("-3.00"), "x.pdf") for day in days]
+    data = ChartInput.of_workspace(Workspace(workspace.catalog, Library(transactions=bookings)),
+                                   ALL_TIME)  # fmt: skip
+    chart = build_chart(ChartKind.CALENDAR, data, LIGHT)
+    labels = [label.get_text() for label in chart.figure.axes[0].get_xticklabels()]
+    assert labels == ["Mai 26", "Jun 26"]
 
 
 def test_budget_title_matches_its_limits(workspace: Workspace) -> None:

@@ -260,6 +260,34 @@ def test_a_pattern_without_match_is_an_error(
     assert "Keine Datei passt" in capsys.readouterr().err
 
 
+def test_file_names_with_brackets_are_files(
+    statement_pdf: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bracketed = tmp_path / "Auszug [1].pdf"
+    bracketed.write_bytes(statement_pdf.read_bytes())
+    assert main(["check", str(bracketed)]) == EXIT_OK
+    assert "Auszug [1].pdf" in capsys.readouterr().out
+
+
+def test_check_goes_on_after_an_unreadable_file(
+    statement_pdf: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    broken = tmp_path / "kaputt.pdf"
+    broken.write_bytes(b"kein PDF")
+    assert main(["check", str(broken), str(statement_pdf)]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert "kaputt.pdf: Die Datei konnte nicht als Kontoauszug gelesen werden." in captured.err
+    assert "Saldo-Abgleich:  ok" in captured.out
+
+
+def test_errors_name_the_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    good, bad = tmp_path / "gut.csv", tmp_path / "kaputt.csv"
+    good.write_text("Typ;Kategorie;Betrag (EUR)\nAusgabe;A;1,00\n", encoding="utf-8")
+    bad.write_text("Typ;Kategorie;Betrag (EUR)\nAusgabe;A;zehn\n", encoding="utf-8")
+    assert main(["merge", str(good), str(bad)]) == EXIT_ERROR
+    assert "kaputt.csv: Die Zusammenfassung ist fehlerhaft." in capsys.readouterr().err
+
+
 def test_highlight_refuses_a_pdf_without_bookings(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -279,11 +307,11 @@ def test_write_failures_are_reported(
     blocker.write_text("x", encoding="utf-8")
     code = main(["summary", str(statement_pdf), "--format", "csv", "--output-dir", str(blocker)])
     assert code == EXIT_ERROR
-    assert "nicht geschrieben werden" in capsys.readouterr().err
+    assert f"{blocker} konnte nicht geschrieben werden" in capsys.readouterr().err
     missing = tmp_path / "fehlt" / "x.pdf"
     assert main(["-v", "highlight", str(statement_pdf), "-o", str(missing)]) == EXIT_ERROR
     err = capsys.readouterr().err
-    assert "nicht geschrieben werden" in err
+    assert f"{missing} konnte nicht geschrieben werden" in err
     assert "Details:" in err
 
 

@@ -30,3 +30,22 @@ rectangles identical to before the geometry fix (those PDFs start at 0,0) –, `
 Test gaps closed: geometry test with pdfplumber (finding 1), summary net against `totals()`
 with a refund surplus, read-only directory comparisons, all-time calendar labels, CLI write
 failures, merge chart with negative amounts, `$` in payees, rotated pages, control characters.
+
+## Second round
+
+The reviewer verified every row above against the code and with probes. Among them: a crop
+box that differs from the media box, all 13 charts with `$` in names, summary totals with
+splits, refunds, ignored categories and income reversals, and calendar cells still hit-testable
+after `add_artist`. No high or medium findings. After revision: 610 tests green,
+ruff/format/mypy clean.
+
+| # | Sev. | Finding | Disposition |
+|---|---|---|---|
+| 1 | low | Without the lock, a CLI reader holding `library.json` open makes the app's final rename fail on Windows (`PermissionError`). | **Fixed.** `_rename` retries a blocked rename up to six times (50 ms apart) for the data file, its backup and the encryption switch; test simulates two refusals. |
+| 2 | low | A real file name containing `[` was treated as a pattern. | **Fixed.** An existing path is taken as is. |
+| 3 | low | `merge` and write errors did not name the file. | **Fixed.** Summary reads are wrapped like statement reads; `ExportError` carries the path and the message names it. |
+| 4 | low | No test covered the read-only guard on mixed encrypted/plain copies. | **Fixed.** Test compares the directory before and after. |
+| 5 | nit | `check` stopped at the first unreadable file. | **Fixed.** Every file is checked; the exit code is the worst result. |
+| 6 | nit | A month beginning in the first calendar column got no label. | **Fixed.** The month beginning in a column wins, also in the first one. |
+| 7 | nit | With only refund surpluses the donut lost the note. | **Fixed.** The message names them. |
+| 8 | nit | `Summary.chartable_expenses` unused. | **Removed.** |

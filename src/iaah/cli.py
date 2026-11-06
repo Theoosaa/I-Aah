@@ -96,7 +96,6 @@ ERROR_MESSAGES: Final[tuple[tuple[type[IaahError], str], ...]] = (
     (CsvMappingError, "In der CSV-Datei wurden Datum oder Betrag nicht erkannt."),
     (CategoryFileError, "Die Kategorien-Datei ist fehlerhaft."),
     (SummaryFileError, "Die Zusammenfassung ist fehlerhaft."),
-    (ExportError, "Die Datei konnte nicht geschrieben werden (in einem anderen Programm offen?)."),
 )
 GENERIC_ERROR: Final = "Unerwarteter Fehler."
 
@@ -122,6 +121,8 @@ def german_message(error: IaahError) -> str:
     """The German text for an error."""
     if isinstance(error, UsageError):
         return str(error)
+    if isinstance(error, ExportError):
+        return f"{error.path} konnte nicht geschrieben werden (in einem anderen Programm offen?)."
     return next((text for kind, text in ERROR_MESSAGES if isinstance(error, kind)), GENERIC_ERROR)
 
 
@@ -196,12 +197,19 @@ def _period(text: str) -> Period:
 
 
 def _run_check(args: argparse.Namespace) -> int:
-    clean = True
+    """Check every file, even after an unreadable one; the worst result is the exit code."""
+    worst = EXIT_OK
     for path in expand(args.pdfs):
-        parsed = _read_statement(path)
+        try:
+            parsed = _read_statement(path)
+        except UsageError as error:
+            print(f"Fehler: {error}", file=sys.stderr)
+            worst = EXIT_ERROR
+            continue
         print(render_check(path.name, parsed, all_lines=args.lines))
-        clean &= passes(parsed)
-    return EXIT_OK if clean else EXIT_PROBLEMS
+        if not passes(parsed):
+            worst = max(worst, EXIT_PROBLEMS)
+    return worst
 
 
 def _run_summary(args: argparse.Namespace) -> int:
@@ -236,7 +244,7 @@ def _run_highlight(args: argparse.Namespace) -> int:
 
 
 def _run_merge(args: argparse.Namespace) -> int:
-    summary = merge_summaries(read_csv_summary(path) for path in expand(args.csvs))
+    summary = merge_summaries(_read_summary(path) for path in expand(args.csvs))
     _write_outputs(summary, args, category_colors(default_catalog()), MERGED_TITLE)
     return EXIT_OK
 
@@ -263,18 +271,29 @@ def _output(args: argparse.Namespace, name: str) -> Path:
 
 
 def _read_statement(path: Path) -> ParsedStatement:
-    """Parse a PDF statement; the error names the file."""
+    """Parse a PDF statement; the error names the file (as do the two helpers below)."""
     try:
         return read_statement(path)
     except IaahError as error:
-        raise UsageError(f"{path.name}: {german_message(error)}") from error
+        raise _about(path, error) from error
 
 
 def _import(workspace: Workspace, path: Path) -> None:
     try:
         workspace.import_file(path)
     except IaahError as error:
-        raise UsageError(f"{path.name}: {german_message(error)}") from error
+        raise _about(path, error) from error
+
+
+def _read_summary(path: Path) -> Summary:
+    try:
+        return read_csv_summary(path)
+    except IaahError as error:
+        raise _about(path, error) from error
+
+
+def _about(path: Path, error: IaahError) -> UsageError:
+    return UsageError(f"{path.name}: {german_message(error)}")
 
 
 # -- check report -----------------------------------------------------------------------------
@@ -336,10 +355,11 @@ def _line(diagnosis: LineDiagnosis) -> str:
 
 def expand(patterns: Iterable[str]) -> list[Path]:
     """Paths, with a pattern in the file name (``auszuege\\*.pdf``) expanded – Windows shells
-    do not do it. A pattern that matches nothing is an error, not silence."""
+    do not do it. An existing file is taken as it is (``Auszug [1].pdf``); a pattern that
+    matches nothing is an error, not silence."""
     paths: list[Path] = []
     for pattern in map(Path, patterns):
-        if not GLOB_CHARACTERS.intersection(pattern.name):
+        if pattern.exists() or not GLOB_CHARACTERS.intersection(pattern.name):
             paths.append(pattern)
             continue
         matches = sorted(pattern.parent.glob(pattern.name))

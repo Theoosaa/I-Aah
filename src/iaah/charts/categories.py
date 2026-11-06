@@ -60,9 +60,9 @@ def donut_chart(
     refunds outweigh its spending (negative amount) cannot be a slice; it is named below the
     ring, so the chart still explains a difference to the KPI total."""
     spending = {name: amount for name, amount in amounts.items() if amount > 0}
+    note = _surplus_note({name: -amount for name, amount in amounts.items() if amount < 0})
     if not spending:
-        return message_chart(NO_SPENDING, theme)
-    surplus = {name: -amount for name, amount in amounts.items() if amount < 0}
+        return message_chart(f"{NO_SPENDING}\n{note}" if note else NO_SPENDING, theme)
     with themed(theme):
         figure = new_figure()
         axes = add_axes(figure, theme)
@@ -70,11 +70,17 @@ def donut_chart(
         axes.legend(wedges, [f"{short(name)}  ({euro(spending[name])})" for name in spending],
                     loc="center left", bbox_to_anchor=LEGEND_ANCHOR)  # fmt: skip
         axes.set_title("Ausgaben nach Kategorie")
-        if surplus:
-            notes = ", ".join(f"{short(name)} ({euro(amount)})" for name, amount in surplus.items())
-            axes.set_xlabel(f"Mehr erstattet als ausgegeben: {notes}")
+        axes.set_xlabel(note)
     pairs = zip(wedges, spending, strict=True)
     return Chart(figure, tuple(DrillTarget(w, DrillKind.CATEGORY, n) for w, n in pairs))
+
+
+def _surplus_note(surplus: Mapping[str, Decimal]) -> str:
+    """Names the categories with more refunds than spending ("" if there are none)."""
+    if not surplus:
+        return ""
+    notes = ", ".join(f"{short(name)} ({euro(amount)})" for name, amount in surplus.items())
+    return f"Mehr erstattet als ausgegeben: {notes}"
 
 
 def _ring(

@@ -58,11 +58,6 @@ class Summary:
     income: Mapping[str, Decimal] = field(default_factory=dict)
 
     @property
-    def chartable_expenses(self) -> dict[str, Decimal]:
-        """The spending a donut can show: positive amounts only."""
-        return {name: amount for name, amount in self.expenses.items() if amount > 0}
-
-    @property
     def total_expenses(self) -> Decimal:
         """All spending."""
         return sum(self.expenses.values(), Decimal(0))

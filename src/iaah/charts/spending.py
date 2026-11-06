@@ -206,13 +206,15 @@ def _calendar_axes(axes: Axes, calendar: CalendarGrid) -> None:
 
 
 def _month_starts(calendar: CalendarGrid) -> list[tuple[int, str]]:
-    """The first column (by its first day inside the range), and every column in which a
-    month of the range begins, labeled like ``Jul 26``."""
-    starts = [(0, month_label(f"{_days_in_range(calendar, 0)[0]:%Y-%m}"))]
-    for week in range(1, calendar.weeks):
-        firsts = [day for day in _days_in_range(calendar, week) if day.day == FIRST_OF_MONTH]
-        if firsts:
-            starts.append((week, month_label(f"{firsts[0]:%Y-%m}")))
+    """Every column in which a month of the range begins, labeled like ``Jul 26``. The first
+    column always gets a label: the month beginning in it, else the month of its first day
+    (a range starting on 29 April and 1 May in the same column reads "Mai")."""
+    starts: list[tuple[int, str]] = []
+    for week in range(calendar.weeks):
+        days = _days_in_range(calendar, week)
+        firsts = [day for day in days if day.day == FIRST_OF_MONTH]
+        if firsts or not starts:
+            starts.append((week, month_label(f"{(firsts or days)[0]:%Y-%m}")))
     return starts
 
 

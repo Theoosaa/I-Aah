@@ -25,6 +25,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -64,6 +65,8 @@ DAMAGED_STAMP: Final = "%Y%m%d-%H%M%S-%f"
 GLOB_ANY: Final = "*"
 ENCODING: Final = "utf-8"
 LOCKED_BYTES: Final = 1
+RENAME_ATTEMPTS: Final = 6
+RENAME_PAUSE: Final = 0.05  # seconds; six attempts outlast a reader's open file handle
 # The UI state is never encrypted, so it may only hold layout and look – nothing naming an
 # account, payee or category (the legacy app stored its account filter there). Extend
 # deliberately.
@@ -129,12 +132,25 @@ def atomic_write(path: Path, data: bytes) -> None:
     """
     temp = _write_temp(path, data)
     _keep_backup(path)
-    temp.replace(path)
+    _rename(temp, path)
 
 
 def replace_atomically(path: Path, data: bytes) -> None:
     """Write ``data`` to ``path`` in one atomic step, without touching its backup."""
-    _write_temp(path, data).replace(path)
+    _rename(_write_temp(path, data), path)
+
+
+def _rename(source: Path, target: Path) -> None:
+    """Atomically replace ``target``. On Windows a reader that has the target open for a
+    moment (``iaah-cli --library``, a virus scanner) makes the rename fail with
+    ``PermissionError``, so it is retried briefly before giving up."""
+    for _ in range(RENAME_ATTEMPTS - 1):
+        try:
+            source.replace(target)
+            return
+        except PermissionError:
+            time.sleep(RENAME_PAUSE)
+    source.replace(target)
 
 
 def _temp_of(path: Path) -> Path:
@@ -159,7 +175,7 @@ def _keep_backup(path: Path) -> None:
     temp = _temp_of(backup)
     try:
         shutil.copyfile(path, temp)
-        temp.replace(backup)
+        _rename(temp, backup)
     except OSError:
         logger.warning("could not update the backup %s", backup)
 

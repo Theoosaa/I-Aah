@@ -245,6 +245,35 @@ def test_read_only_store_touches_nothing(tmp_path: Path) -> None:
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
 
 
+def test_read_only_store_leaves_mixed_copies_alone(tmp_path: Path) -> None:
+    paths = DataPaths(tmp_path)
+    DataStore(paths).enable_encryption("geheim", default_catalog(), _library())
+    plain = document_to_json(default_catalog(), _library()).encode()
+    backup_of(paths.data).write_bytes(plain)  # an interrupted disable
+    before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    store = DataStore(paths, read_only=True)
+    store.unlock("geheim")
+    store.load()
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
+
+
+def test_a_briefly_blocked_rename_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = Path.replace
+    failures = iter([True, True])
+
+    def blocked_twice(self: Path, target: Path) -> Path:
+        if next(failures, False):
+            raise PermissionError(target)  # a reader has the file open
+        return original(self, target)
+
+    monkeypatch.setattr(storage, "RENAME_PAUSE", 0)
+    monkeypatch.setattr(Path, "replace", blocked_twice)
+    atomic_write(tmp_path / "f.json", b"neu")
+    assert (tmp_path / "f.json").read_bytes() == b"neu"
+
+
 def test_read_only_store_creates_no_directory(tmp_path: Path) -> None:
     store = DataStore(DataPaths(tmp_path / "nie-angelegt"), read_only=True)
     assert store.load()[1].transactions == []
