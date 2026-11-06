@@ -5,7 +5,7 @@
 | Module | Responsibility |
 |---|---|
 | `core/library.py` | `StoredStatement`, `Library` (statements, transactions, manual assignments), import with de-duplication. |
-| `core/workspace.py` | `Workspace` = catalog + library; operations that must touch both (rename/remove category, import). |
+| `core/workspace.py` | `Workspace` = catalog + library; operations that must touch both (import, re-categorize). Renaming/removing categories together with their decisions already lives in `Categorizer` (step 2b) – the workspace delegates. |
 | `core/storage.py` | Data directory, atomic writes with `.bak`, JSON codecs for library and UI state, encryption. |
 | `core/migration.py` | One-way import of the legacy `settings.json` / `data.json`. |
 

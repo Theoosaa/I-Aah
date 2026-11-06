@@ -20,9 +20,14 @@ from typing import Final
 from iaah.core.errors import CsvMappingError
 from iaah.core.models import StatementInfo, Transaction
 from iaah.core.parsing.diagnostics import ParsedStatement, ParseReport
-from iaah.core.text import DecimalStyle, detect_decimal_style, parse_amount, parse_flexible_date
+from iaah.core.text import (
+    DecimalStyle,
+    decode_text,
+    detect_decimal_style,
+    parse_amount,
+    parse_flexible_date,
+)
 
-ENCODINGS: Final = ("utf-8-sig", "cp1252", "latin-1")  # latin-1 never fails: last resort
 DELIMITERS: Final = (";", ",", "\t", "|")
 SNIFF_SAMPLE_CHARS: Final = 4000
 HEADER_SEARCH_ROWS: Final = 20
@@ -97,7 +102,7 @@ def decode_table(raw: bytes) -> CsvTable:
     a header row can be found wins (balance lines in a preamble can make the wrong delimiter
     look consistent). Without any header the most consistent delimiter is kept.
     """
-    text, encoding = _decode(raw)
+    text, encoding = decode_text(raw)
     ranked = _rank_delimiters(text[:SNIFF_SAMPLE_CHARS])
     tables = (CsvTable(_split(text, delimiter), delimiter, encoding) for delimiter in ranked)
     first = next(tables)
@@ -234,15 +239,6 @@ def _match_quality(cell: str, keyword: str) -> _MatchQuality | None:
     if keyword in cell:
         return _MatchQuality.SUBSTRING
     return None
-
-
-def _decode(raw: bytes) -> tuple[str, str]:
-    for encoding in ENCODINGS:
-        try:
-            return raw.decode(encoding), encoding
-        except UnicodeDecodeError:
-            continue
-    raise AssertionError("unreachable: latin-1 decodes any byte sequence")
 
 
 def _split(text: str, delimiter: str) -> tuple[Row, ...]:

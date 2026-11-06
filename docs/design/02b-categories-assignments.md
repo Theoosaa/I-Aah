@@ -100,10 +100,49 @@ decimal strings) and CSV (`name;color;kind;budget;keywords` with `|`-separated k
 also accepts the budgets format (list of `{name, keywords, excluded}`), assigns palette colors,
 maps `excluded` to `IGNORED` and adds missing fallback categories.
 
+## Refinements before implementation
+
+1. **`Category` is frozen** (`keywords: tuple[str, ...]`). The catalog replaces a category on
+   every change, so nobody can mutate keywords behind the index's back – this is what keeps
+   both lookup directions consistent by construction, not by convention.
+2. **Suggestions get their own module** `core/suggestions.py`; `assignments.py` stays about
+   storing and resolving assignments.
+3. **Assigning the automatic category:** if it came from a *keyword*, the manual entry is
+   removed (nothing to remember, as in budgets). If it came from the *fallback*, it is stored
+   as manual – the user has reviewed the booking, so "next open booking" must skip it.
+4. **Stale entries** (category deleted or renamed outside the workspace) resolve to the
+   automatic category instead of failing. `forget_category` removes every entry that uses the
+   category, splits included (legacy behaviour).
+5. **Candidates are contiguous phrases** of the normalized text, never re-joined tokens –
+   otherwise a suggested keyword could never match. For card and PayPal payments the merchant
+   is taken after the intermediary (`visa rewe 435` → `rewe`) or after "Einkauf bei" in the
+   purpose (`… Ihr Einkauf bei Patreon Ireland Limited` → `patreon ireland`, `patreon`).
+6. **Default catalog** (`src/iaah/data/default_categories.json`): the legacy defaults merged
+   with the budgets defaults, pastel palette from budgets extended to 16 colors.
+   "Sparen & Anlage" defaults to `IGNORED` – transfers to one's own savings are not spending
+   and must not lower the savings rate.
+
+## Revisions after review (see `docs/review/02b-categories-assignments.md`)
+
+* Keywords of `INCOME` categories only match money coming in (`match(text, amount)`).
+* `match` normalizes its input; `normalize_text` is idempotent and repairs broken umlauts
+  case-insensitively.
+* Catalog additions: `move_keyword` (atomic, used by the suggestion dialog), `move` (order =
+  tie-break and button order); names are looked up trimmed; budgets finite and whole cents;
+  keywords need a letter or digit.
+* `Categorizer.rename_category` / `remove_category` change catalog and decisions together;
+  `prune_redundant` removes decisions a new keyword makes anyway. Split parts whole cents.
+* Category files: budgets JSON with trailing commas and budgets CSV are read; files are decoded
+  with the shared `text.decode_text`; every problem is a `CategoryFileError`.
+* Suggestions: Unicode tokens (same definition as matching), PayPal first/second merchant copy,
+  card-payment cities excluded, previews only re-resolve bookings that contain the keyword.
+
 ## Tests
 
 `test_categories.py` (both lookup directions stay consistent after every mutation, conflicts,
 token-start matching, longest match, fallbacks undeletable, rename keeps keywords),
-`test_category_io.py` (round trips, budgets import, invalid files), `test_assignments.py`
-(manual > keyword > fallback, splits validation, rename/forget, before/after via
-`auto_category`, keyword preview counts, candidate extraction incl. PayPal case).
+`test_category_io.py` (round trips, budgets import, invalid files, default catalog valid),
+`test_assignments.py` (manual > keyword > fallback, the two "assign the automatic category"
+cases, splits validation, stale entries, rename/forget, before/after via `auto_category`),
+`test_suggestions.py` (candidates incl. VISA and PayPal cases, preview counts, owner conflicts,
+manual bookings ignored).

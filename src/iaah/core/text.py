@@ -3,6 +3,7 @@
 ``normalize_text`` folds text for *matching*; ``clean_display`` repairs text for *showing*.
 """
 
+import functools
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -19,6 +20,7 @@ DOT: Final = "."
 BROKEN_UMLAUT: Final = chr(0xFFFD)
 NO_BREAK_SPACE: Final = chr(0xA0)
 MAX_DECIMAL_DIGITS: Final = 2
+NORMALIZE_CACHE_SIZE: Final = 1 << 16  # distinct texts kept; a few years of bookings fit
 
 
 class DecimalStyle(StrEnum):
@@ -53,6 +55,12 @@ _BROKEN_UMLAUTS: Final[dict[str, str]] = {
     f"H{BROKEN_UMLAUT}ndler": "Händler",
     f"Geb{BROKEN_UMLAUT}ude": "Gebäude",
 }
+_BROKEN_UMLAUTS_FOLDED: Final = {
+    broken.lower(): fixed.lower() for broken, fixed in _BROKEN_UMLAUTS.items()
+}
+
+# Encodings of German bank and Excel exports, tried in order; latin-1 never fails.
+TEXT_ENCODINGS: Final = ("utf-8-sig", "cp1252", "latin-1")
 
 _GERMAN_AMOUNT: Final = re.compile(
     r"^(?P<sign>[+-]?)(?P<units>\d{1,3}(?:\.\d{3})*|\d+),(?P<cents>\d{2})$"
@@ -73,17 +81,32 @@ _GERMAN_DATE_FORMATS: Final = ("%d.%m.%Y", "%d.%m.%y")
 _FLEXIBLE_DATE_FORMATS: Final = (*_GERMAN_DATE_FORMATS, "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y")
 
 
+@functools.lru_cache(maxsize=NORMALIZE_CACHE_SIZE)
 def normalize_text(text: str) -> str:
-    """Fold text for keyword matching and keys.
+    """Fold text for keyword matching and keys. Idempotent, and cached: the same payees and
+    purposes are folded again and again while categorizing.
 
-    Known broken umlauts are repaired first; then lower case, German umlauts transliterated
-    the way banks print them (``ü`` → ``ue``, ``ß`` → ``ss``), other accents removed and
-    whitespace collapsed.
+    Lower case first, then known broken umlauts repaired (in any letter case), German umlauts
+    transliterated the way banks print them (``ü`` → ``ue``, ``ß`` → ``ss``), compatibility
+    forms decomposed and accents removed (``™`` → ``tm``), lower case again – decomposition can
+    produce capitals –, and whitespace collapsed.
     """
-    transliterated = clean_display(text).translate(_TRANSLITERATION)
-    decomposed = unicodedata.normalize("NFKD", transliterated)
+    folded = text.lower()
+    for broken, fixed in _BROKEN_UMLAUTS_FOLDED.items():
+        folded = folded.replace(broken, fixed)
+    decomposed = unicodedata.normalize("NFKD", folded.translate(_TRANSLITERATION))
     unaccented = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return _WHITESPACE.sub(" ", unaccented).strip().lower()
+    return _WHITESPACE.sub(" ", unaccented.lower()).strip()
+
+
+def decode_text(raw: bytes) -> tuple[str, str]:
+    """Decode bytes with the first fitting encoding; returns text and encoding name."""
+    for encoding in TEXT_ENCODINGS:
+        try:
+            return raw.decode(encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    raise AssertionError("unreachable: latin-1 decodes any byte sequence")
 
 
 def clean_display(text: str) -> str:
@@ -99,6 +122,23 @@ def format_euro(amount: Decimal) -> str:
     german = f"{abs(rounded):,.2f}".translate(_ENGLISH_TO_GERMAN_SEPARATORS)
     sign = MINUS if rounded < 0 else ""
     return f"{sign}{german} €"
+
+
+def is_whole_cents(amount: Decimal) -> bool:
+    """Whether ``amount`` is a finite amount without fractions of a cent (and not so large
+    that it cannot be represented in cents)."""
+    if not amount.is_finite():
+        return False
+    try:
+        return amount == amount.quantize(CENT)
+    except InvalidOperation:  # more digits than the decimal context can hold
+        return False
+
+
+def format_plain_german(amount: Decimal) -> str:
+    """Two decimals with a decimal comma and no grouping (``"-1234,50"``) – for CSV cells,
+    which spreadsheets must read as numbers."""
+    return f"{amount.quantize(CENT)}".replace(DOT, COMMA)
 
 
 def parse_german_amount(raw: str) -> Decimal:

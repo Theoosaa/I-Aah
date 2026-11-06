@@ -9,6 +9,7 @@ from iaah.core.text import (
     BROKEN_UMLAUT,
     DecimalStyle,
     clean_display,
+    decode_text,
     detect_decimal_style,
     format_euro,
     normalize_text,
@@ -36,6 +37,36 @@ ENGLISH = DecimalStyle.ENGLISH
 )
 def test_normalize_text(raw: str, expected: str) -> None:
     assert normalize_text(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        f"BEITRAG F{BROKEN_UMLAUT}R VEREIN",
+        "SØSTRENE GRENE",
+        "Straße  ÄRØ",
+        f"x{BROKEN_UMLAUT}y",
+        "Shop™",  # NFKD produces capitals ("TM")
+        "№ 5",
+        f"{chr(0x210C)}annover",  # BLACK-LETTER CAPITAL H
+    ],
+)
+def test_normalize_text_is_idempotent(raw: str) -> None:
+    once = normalize_text(raw)
+    assert normalize_text(once) == once
+
+
+def test_compatibility_forms_are_lower_case() -> None:
+    assert normalize_text("Brand™ Store") == "brandtm store"
+
+
+def test_broken_umlaut_repair_ignores_letter_case() -> None:
+    assert normalize_text(f"BEITRAG F{BROKEN_UMLAUT}R VEREIN") == "beitrag fuer verein"
+
+
+def test_decode_text_falls_back_to_cp1252() -> None:
+    assert decode_text("Bäckerei €".encode("cp1252")) == ("Bäckerei €", "cp1252")
+    assert decode_text("﻿Bäckerei".encode()) == ("Bäckerei", "utf-8-sig")
 
 
 def test_clean_display_repairs_known_words_only() -> None:

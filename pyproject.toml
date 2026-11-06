@@ -42,6 +42,9 @@ iaah = "iaah.gui.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+iaah = ["data/*.json"]
+
 # --------------------------------------------------------------------------- ruff
 [tool.ruff]
 target-version = "py312"

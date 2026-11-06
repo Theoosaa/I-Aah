@@ -73,6 +73,35 @@ class Period:
   cells outside the range `None`.
 * Drill-down helpers: `entries_of_category(entries, name)`, `entries_of_payee(entries, payee)`.
 
+## Refinements before implementation
+
+1. **A package instead of one module** – about 20 functions would make `analysis.py` long:
+   `analysis/ledger.py` (entries, periods, month arithmetic, drill-down),
+   `analysis/totals.py` (totals, KPIs, change, per-month and per-category figures, Sankey,
+   year comparison, budgets), `analysis/timeline.py` (balances, calendar, missing months),
+   `analysis/recurring.py` (fixed costs).
+2. **Merchants instead of raw payees.** Top payees and fixed-cost detection group by merchant:
+   all PayPal or VISA payments otherwise collapse into one "payee", and a Netflix subscription
+   paid via PayPal is never recognised as recurring (a legacy blind spot). The merchant logic
+   from `suggestions.py` moves to its own module `core/merchants.py` and serves both.
+3. **Analysis stays catalog-free:** `budget_status` takes `budgets: Mapping[str, Decimal]`
+   (built by the caller from the catalog), entries already carry the category kind.
+4. **Real balance per statement:** bookings belong to a statement through `Transaction.source`
+   (the legacy app matched account + month, which mixes statements of one month).
+5. Ratios (savings rate, budget use, changes) are `Decimal` fractions (`0.25`); formatting as
+   percent is the chart's job.
+
+## Deviations during implementation
+
+* `top_payees` became `top_merchants` (grouped by `merchants.merchant_key`); drill-down is
+  `entries_of_merchant`. On the real legacy data, grouping by raw text split chains into one
+  "merchant" per branch (107 merchants vs. 70 payees); `merchant_key` drops branch numbers and
+  the card-payment city (87 merchants, one more fixed cost recognised). `merchant_label` shows
+  the same grouping in the booking's own spelling.
+* `daily_expenses` became `daily_spending` and is **gross** (refunds not subtracted): a refund
+  day would otherwise show negative spending in the calendar.
+* `suggestions.py` now uses `merchants.py`; the merchant logic exists once.
+
 ## Tests
 
 `test_analysis.py` with a small hand-built ledger (two months, income, expenses, a refund, a
