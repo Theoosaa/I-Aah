@@ -42,6 +42,21 @@ def _violations(layer: str) -> list[str]:
     return found
 
 
+def _relative_imports() -> list[str]:
+    found: list[str] = []
+    for path in sorted(PACKAGE_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level > 0:
+                found.append(f"{path.relative_to(PACKAGE_ROOT)}:{node.lineno}")
+    return found
+
+
 @pytest.mark.parametrize("layer", sorted(FORBIDDEN_IMPORTS))
 def test_layer_respects_import_boundaries(layer: str) -> None:
     assert _violations(layer) == []
+
+
+def test_no_relative_imports() -> None:
+    # Relative imports would slip past the boundary check above, so they are banned.
+    assert _relative_imports() == []

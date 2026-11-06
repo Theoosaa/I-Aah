@@ -8,8 +8,9 @@ version = "4.0.0"
 description = "Read German bank statements (ING PDF, generic CSV), categorize, review and chart spending."
 readme = "README.md"
 requires-python = ">=3.12"
-# Third-party notices shipped with every build (ported code from "budgets", MIT).
-license-files = ["LICENSES/*.txt"]
+license = "MIT"
+# Own license plus third-party notices (ported code from "budgets", MIT).
+license-files = ["LICENSE", "LICENSES/*.txt"]
 dependencies = [
     "pdfplumber>=0.11",
     "pypdf>=5.0",
@@ -53,10 +54,13 @@ extend-exclude = ["kontoanalyse.py", "parser.py", "highlight.py", "smoke_test.py
 [tool.ruff.lint]
 select = [
     "E", "W", "F", "I", "UP", "B", "BLE", "SIM", "RET", "C90", "N",
-    "ANN", "PL", "PTH", "RUF", "ERA", "T20", "D100", "D104",
+    "ANN", "PL", "PTH", "RUF", "ERA", "T20", "D100", "D104", "TID252",
 ]
 # Typographic characters used deliberately in German UI text.
 allowed-confusables = ["–", "×"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
 
 [tool.ruff.lint.mccabe]
 max-complexity = 8

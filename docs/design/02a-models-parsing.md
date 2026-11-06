@@ -95,6 +95,29 @@ Missing date/amount column → `CsvMappingError`.
 
 `IaahError` → `StatementParseError`, `CsvMappingError`, `CategoryError` (2b), `StorageError` (2d).
 
+## Revisions after review (see `docs/review/02a-models-parsing.md`)
+
+* `Placement(head: Region, details: tuple[Region, ...])` – one region per page, because a
+  booking may continue on the next page; the block builder now runs over the whole document.
+* The layout takes one `LineClassifier(line) -> LineKind` (`HEAD`, `BAD_HEAD`, `END`, `NOISE`,
+  `TEXT`) instead of two text predicates; it gets the whole `Line`, so geometry can be used.
+  ING heads must reach the amount column (x1 ≥ 540 pt; measured ≈ 553). `BAD_HEAD` = reaches
+  the column, date in front, unreadable amount-like end; it closes the open booking. `END`
+  ("Neuer Saldo") closes the booking list, so text on the following page cannot leak into the
+  last booking. A head *without* amount stays undetectable – documented limitation;
+  `suspicious` may also list value-dated purpose lines that contain an amount (hint only).
+* Module placement: `LineStatus`/`LineDiagnosis` live in `layout.py`, `ParsedStatement` in
+  `diagnostics.py` (avoids import cycles).
+* CSV API: `read_csv(path)`, `load_table`, `decode_table`, `import_table`, `parse_rows`; the
+  decimal style is detected per column (`DecimalStyle`, at most two decimals, thousands-only
+  columns decided by their grouping); skipped rows are reported by index. Column mapping: the
+  most specific keyword wins, then match quality; generic keywords (`buchung`, `date`, `wert`,
+  `name`, `text`) match whole words only; no column serves two fields. The delimiter is the most
+  consistent one under which a header row is found.
+* `normalize_text` repairs known broken umlauts before folding, so keys and matching agree.
+* Unknown booking types still fall back to the first word (legacy behaviour, keeps keys); known
+  types need a word boundary; `Gutschrift/Dauerauftrag` added.
+
 ## Tests
 
 * `test_text.py`: normalization (umlauts → ae/oe/ue, ß, accents, whitespace), amounts
