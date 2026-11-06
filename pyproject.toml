@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iaah"
+version = "4.0.0"
+description = "Read German bank statements (ING PDF, generic CSV), categorize, review and chart spending."
+readme = "README.md"
+requires-python = ">=3.12"
+# Third-party notices shipped with every build (ported code from "budgets", MIT).
+license-files = ["LICENSES/*.txt"]
+dependencies = [
+    "pdfplumber>=0.11",
+    "pypdf>=5.0",
+    "reportlab>=4.2",
+    "Pillow>=11.0",
+    "matplotlib>=3.9",
+    "openpyxl>=3.1",
+    "cryptography>=43.0",
+    "platformdirs>=4.3",
+]
+
+[project.optional-dependencies]
+# Tooling is pinned so lint and type results do not depend on the installed version.
+dev = [
+    "pytest>=8.3",
+    "ruff==0.17.4",
+    "mypy==2.4.1",
+    "types-openpyxl",
+    "types-reportlab",
+]
+build = ["pyinstaller>=6.11"]
+
+[project.scripts]
+iaah-cli = "iaah.cli:main"
+
+[project.gui-scripts]
+iaah = "iaah.gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# --------------------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+# Legacy single-file app (removed in step 5 of the unification) and design notes,
+# whose code blocks are deliberately compact pseudo-code.
+extend-exclude = ["kontoanalyse.py", "parser.py", "highlight.py", "smoke_test.py", "docs"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "UP", "B", "BLE", "SIM", "RET", "C90", "N",
+    "ANN", "PL", "PTH", "RUF", "ERA", "T20", "D100", "D104",
+]
+# Typographic characters used deliberately in German UI text.
+allowed-confusables = ["–", "×"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-branches = 10
+max-statements = 30
+# Flag magic strings and bytes in comparisons too, not only numbers.
+allow-magic-value-types = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]
+"src/iaah/cli.py" = ["T201"]
+
+# --------------------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+files = ["src", "tests"]
+
+# --------------------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--import-mode=importlib", "--strict-markers"]
+xfail_strict = true
+filterwarnings = ["error"]

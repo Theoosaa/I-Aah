@@ -219,14 +219,19 @@ __marimo__/
 
 .idea
 
-settings.json
-data.json
-# I-Aah: generierte/persoenliche Dateien
-ui_state.json
+# I-Aah: personal data – never commit (the app stores it in the user data dir).
+# Legacy and new data files, anchored to the repo root so tool configs such as
+# .vscode/settings.json are not affected.
+/settings.json
+/data.json
+/library.json
+/categories.json
+/ui_state.json
 *.bak
 *.tmp
-
-# PyInstaller-Build
-build/
-dist/
-*.spec
+# Bank statements and exports (PDF, CSV, Excel) anywhere in the tree …
+*.pdf
+*.csv
+*.xlsx
+# … except synthetic test fixtures.
+!tests/fixtures/**

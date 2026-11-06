@@ -210,10 +210,11 @@ def create_highlighted_pdf(
     reader = PdfReader(pdf_path)
     writer = PdfWriter()
     for pageno, page in enumerate(reader.pages, start=1):
+        # pypdf >= 7: a page must belong to the writer before it is modified.
+        attached = writer.add_page(page)
         page_bookings = by_page.get(pageno)
         if page_bookings:
-            _overlay(page, page_bookings, color_of, alpha, default_color)
-        writer.add_page(page)
+            _overlay(attached, page_bookings, color_of, alpha, default_color)
 
     # Legende nur fuer tatsaechlich vorkommende Kategorien (stabile Reihenfolge)
     used: list[str] = []
