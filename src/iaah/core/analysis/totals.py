@@ -179,14 +179,28 @@ def monthly_cashflow(entries: Sequence[Entry]) -> list[MonthFlow]:
     return [MonthFlow(month, totals(by_month[month])) for month in sorted(by_month)]
 
 
+def category_totals(entries: Iterable[Entry], kind: CategoryKind) -> dict[str, Decimal]:
+    """Net amount per category of ``kind`` – spending counts positive for expense categories –
+    largest first. A category whose refunds outweigh its spending stays in with a negative
+    amount, so the values add up exactly to ``totals()``; only exact zeros are left out."""
+    sums: dict[str, Decimal] = defaultdict(Decimal)
+    for entry in entries:
+        if entry.kind is kind:
+            sums[entry.category] += -entry.amount if kind is CategoryKind.EXPENSE else entry.amount
+    nonzero = ((name, amount) for name, amount in sums.items() if amount)
+    return dict(sorted(nonzero, key=lambda item: item[1], reverse=True))
+
+
 def expense_by_category(entries: Iterable[Entry]) -> dict[str, Decimal]:
     """Net spending per expense category, largest first; categories at or below zero
-    (fully refunded) are left out."""
-    spent: dict[str, Decimal] = defaultdict(Decimal)
-    for entry in entries:
-        if entry.kind is CategoryKind.EXPENSE:
-            spent[entry.category] -= entry.amount
-    return _positive_descending(spent)
+    (fully refunded) are left out – what a chart can show."""
+    return _positive_descending(category_totals(entries, CategoryKind.EXPENSE))
+
+
+def income_by_category(entries: Iterable[Entry]) -> dict[str, Decimal]:
+    """Net income per income category, largest first; categories at or below zero are left
+    out."""
+    return _positive_descending(category_totals(entries, CategoryKind.INCOME))
 
 
 def category_comparison(

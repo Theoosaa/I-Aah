@@ -2,6 +2,7 @@
 
 import base64
 import json
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -221,6 +222,33 @@ def test_damaged_plain_file_with_encrypted_backup_asks_for_the_password(tmp_path
     assert paths.data.exists()  # nothing moved before the backup could be read
     fresh.unlock("geheim")
     assert _payee(fresh) == "alt"
+
+
+def test_read_only_store_touches_nothing(tmp_path: Path) -> None:
+    paths = DataPaths(tmp_path)
+    _two_versions(paths)
+    paths.data.write_bytes(b"{ damaged")
+    (tmp_path / "library.json.tmp").write_bytes(b"leftover")
+    before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    store = DataStore(paths, read_only=True)
+    assert _payee(store) == "alt"
+    assert store.recovered_from_backup
+    assert store.damaged_copy is None
+    writes: list[Callable[[], None]] = [
+        lambda: store.save(default_catalog(), _library()),
+        lambda: store.enable_encryption("geheim", default_catalog(), _library()),
+        lambda: store.save_ui_state({"theme": "dark"}),
+    ]
+    for write in writes:
+        with pytest.raises(StorageError, match="read-only"):
+            write()
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
+
+
+def test_read_only_store_creates_no_directory(tmp_path: Path) -> None:
+    store = DataStore(DataPaths(tmp_path / "nie-angelegt"), read_only=True)
+    assert store.load()[1].transactions == []
+    assert not (tmp_path / "nie-angelegt").exists()
 
 
 # -- encryption -------------------------------------------------------------------------------

@@ -284,15 +284,22 @@ class DataStore:
     The caller holds the ``InstanceLock``. Saving requires that this session owns the data –
     it loaded it successfully, or there was none – so a file that could not be loaded (newer
     version, no password given, damaged without backup) is never overwritten.
+
+    A ``read_only`` store (``iaah-cli --library``) never touches the directory: it needs no
+    lock (every write is an atomic rename, so it reads either version), loads a damaged data
+    file's backup without moving anything, tidies nothing and refuses to save.
     """
 
     paths: DataPaths
     recovered_from_backup: bool  # the last load() used the backup
     damaged_copy: Path | None  # where the last load() set a damaged data file aside
 
-    def __init__(self, paths: DataPaths, cipher: Cipher | None = None) -> None:
+    def __init__(
+        self, paths: DataPaths, cipher: Cipher | None = None, *, read_only: bool = False
+    ) -> None:
         self.paths = paths
         self._cipher = cipher
+        self._read_only = read_only
         self._owns_data = False
         self.recovered_from_backup = False
         self.damaged_copy = None
@@ -344,7 +351,8 @@ class DataStore:
         main = _read(self.paths.data)
         result = self._load_backup_only() if main is None else self._load_main(main)
         self._owns_data = True
-        _remove_temps(self.paths.data)
+        if not self._read_only:
+            _remove_temps(self.paths.data)
         return result
 
     def save(self, catalog: CategoryCatalog, library: Library) -> None:
@@ -392,6 +400,7 @@ class DataStore:
         """Store window and view settings. Never encrypted, hence restricted to
         ``UI_STATE_KEYS`` with scalar or number-list values (``ValueError`` otherwise); string
         values must be view identifiers, never account, payee or category names."""
+        self._require_writable()
         rejected = sorted(
             key for key, value in state.items()
             if key not in UI_STATE_KEYS or not _is_layout_value(value)
@@ -404,8 +413,13 @@ class DataStore:
             raise StorageError(f"cannot write {self.paths.ui_state}") from error
 
     def _require_ownership(self) -> None:
+        self._require_writable()
         if not self._owns_data and self.has_data():
             raise StorageError("refusing to overwrite data this session has not loaded")
+
+    def _require_writable(self) -> None:
+        if self._read_only:
+            raise StorageError("this data store is read-only")
 
     def _switch(self, cipher: Cipher | None, catalog: CategoryCatalog, library: Library) -> None:
         """Rewrite backup and data file in the new form – the backup first, so after success no
@@ -448,13 +462,15 @@ class DataStore:
             if backup is None:
                 raise
             return self._recover(backup)
-        if backup is not None and is_encrypted(backup) != is_encrypted(main):
+        mixed = backup is not None and is_encrypted(backup) != is_encrypted(main)
+        if mixed and not self._read_only:
             _keep_backup(self.paths.data)  # an interrupted switch: the backup follows the file
         return result
 
     def _recover(self, backup: bytes) -> tuple[CategoryCatalog, Library]:
         result = self._decode(backup)
-        self.damaged_copy = self._set_aside()
+        if not self._read_only:
+            self.damaged_copy = self._set_aside()
         self.recovered_from_backup = True
         return result
 

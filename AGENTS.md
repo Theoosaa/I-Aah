@@ -12,9 +12,9 @@ Tkinter GUI, and analyses spending over months and years (charts, budgets, expor
 It merges two earlier tools: the legacy I-Aah app (`kontoanalyse.py`) and *budgets*
 (MIT, see `LICENSES/`). I-Aah itself is MIT-licensed (`LICENSE`).
 
-**Status:** the unification is in progress (plan and per-step notes in `docs/`). Until the
-new GUI lands, `python kontoanalyse.py` is still the working app; `iaah-cli` and `iaah` /
-`python -m iaah` become available with the CLI and GUI steps.
+**Status:** the unification is in progress (plan and per-step notes in `docs/`). `iaah-cli`
+works; until the new GUI lands, `python kontoanalyse.py` is still the working app, and `iaah` /
+`python -m iaah` become available with the GUI step.
 
 ## Setup
 
@@ -50,7 +50,7 @@ Before calling any change done: `pytest`, `ruff check .`, `ruff format --check .
 | `src/iaah/cli.py` | `iaah-cli` entry point. |
 | `src/iaah/__main__.py` | `python -m iaah` → GUI. |
 | `src/iaah/data/` | Bundled data files (default category catalog). |
-| `tests/` | pytest suite for everything below the GUI; `tests/fixtures/` holds synthetic data. |
+| `tests/` | pytest suite for everything below the GUI; `tests/conftest.py` builds the synthetic data. |
 | `docs/design/`, `docs/review/` | Design notes and review findings per implementation step. |
 
 ## Architecture rules
@@ -124,9 +124,11 @@ Checked in review (no reliable tool support):
 
 ### Charts
 
-- A chart function takes prepared data plus a theme and returns a `Figure`; it never reads
-  application state. Use constrained layout. Every chart has a caption constant explaining
-  what it shows and over which period.
+- A chart function takes prepared data plus a `ChartTheme` and returns a `Chart` (figure plus
+  clickable drill targets); it never reads application state. GUI and report build charts only
+  through `charts.gallery.build_chart`. Figures come from `matplotlib.figure.Figure` (never
+  pyplot), are drawn inside `style.themed(theme)` and use constrained layout. Every chart kind
+  has a German title and a caption explaining what it shows and over which period.
 
 ## Tests
 
@@ -135,8 +137,9 @@ Checked in review (no reliable tool support):
 - Tests are typed like production code; only magic values are allowed in assertions.
 - Warnings are errors (`filterwarnings = error`); silence a third-party warning explicitly
   and narrowly in `pyproject.toml` if needed.
-- Fixtures are synthetic (pdfplumber-style word dicts, small CSV strings) and live in
-  `tests/fixtures/`. **Never commit real statements or personal data.**
+- Fixtures are synthetic (pdfplumber-style word dicts, small CSV strings, an ING-like PDF built
+  with reportlab) and live in `tests/conftest.py`. **Never commit real statements or personal
+  data.**
 - Optional regression against a real statement: set `IAAH_SAMPLE_PDF` to its path.
 - New behaviour comes with a test; the suite stays green.
 
