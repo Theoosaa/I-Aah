@@ -193,6 +193,12 @@ def is_valid_iban(candidate: str) -> bool:
     return int(digits) % IBAN_MODULUS == IBAN_CHECK_REMAINDER
 
 
+def account_from_iban(iban: str) -> str:
+    """The account number inside a German IBAN (its last ten digits) – the account a
+    statement shows when it prints no separate number; empty without IBAN."""
+    return iban[-ACCOUNT_DIGITS_IN_IBAN:]
+
+
 def _page_words(page: pdfplumber.page.Page) -> list[Word]:
     raw_words = page.extract_words(x_tolerance_ratio=WORD_X_TOLERANCE_RATIO)
     return [Word.from_pdfplumber(raw) for raw in raw_words]
@@ -236,7 +242,7 @@ def _is_suspicious(diagnosis: LineDiagnosis) -> bool:
 
 def _read_metadata(lines: Sequence[str]) -> _Metadata:
     iban = _read_iban(lines)
-    account = _first_group(ACCOUNT_PATTERN, lines, "account") or iban[-ACCOUNT_DIGITS_IN_IBAN:]
+    account = _first_group(ACCOUNT_PATTERN, lines, "account") or account_from_iban(iban)
     return _Metadata(
         period=_read_period(lines),
         account=account,

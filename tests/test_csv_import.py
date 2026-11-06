@@ -23,7 +23,7 @@ from iaah.core.parsing.csv_import import (
 # "Buchungstext" precedes "Verwendungszweck".
 ING_EXPORT: Final = (
     "Umsatzanzeige;Datei erstellt am: 01.08.2026\n"
-    "IBAN;DE00 0000\n"
+    "IBAN;DE89 3704 0044 0532 0130 00\n"  # the standard example IBAN
     "\n"
     "Buchung;Valuta;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung\n"
     "01.07.2026;01.07.2026;REWE Markt;Lastschrift;Einkauf;1.000,00;EUR;-12,34;EUR\n"
@@ -77,6 +77,20 @@ def test_ing_header_and_mapping() -> None:
         CsvField.PAYEE: 2,
         CsvField.PURPOSE: 4,
     }
+
+
+def test_account_comes_from_the_iban_in_the_preamble() -> None:
+    parsed = import_table(decode_table(ING_EXPORT.encode()), "ing.csv")
+    assert parsed.info.iban == "DE89370400440532013000"
+    assert parsed.info.account == "0532013000"  # as a PDF statement of that account shows it
+    assert {txn.account for txn in parsed.transactions} == {"0532013000"}
+
+
+def test_iban_columns_of_bookings_are_not_the_account() -> None:
+    raw = b"Datum;Betrag;IBAN\n01.07.2026;-1,00;DE89 3704 0044 0532 0130 00\n"
+    parsed = import_table(decode_table(raw), "x.csv")
+    assert parsed.info.account == ""
+    assert parsed.transactions[0].account == ""
 
 
 def test_preamble_with_keywords_is_not_a_header() -> None:

@@ -56,3 +56,19 @@ class SplitError(IaahError):
 
 class CategoryFileError(IaahError):
     """A category file could not be read."""
+
+
+class StorageError(IaahError):
+    """A data file could not be read or written."""
+
+
+class PasswordRequiredError(StorageError):
+    """The data is encrypted and no password was given."""
+
+
+class WrongPasswordError(StorageError):
+    """The password does not decrypt the data."""
+
+
+class UnsupportedVersionError(StorageError):
+    """The data file was written by a newer program version – never treated as damage."""

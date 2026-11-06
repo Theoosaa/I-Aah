@@ -17,9 +17,10 @@ from enum import IntEnum, StrEnum
 from pathlib import Path
 from typing import Final
 
-from iaah.core.errors import CsvMappingError
+from iaah.core.errors import CsvMappingError, StatementParseError
 from iaah.core.models import StatementInfo, Transaction
 from iaah.core.parsing.diagnostics import ParsedStatement, ParseReport
+from iaah.core.parsing.ing import account_from_iban, is_valid_iban
 from iaah.core.text import (
     DecimalStyle,
     decode_text,
@@ -92,7 +93,11 @@ def read_csv(path: Path) -> ParsedStatement:
 
 def load_table(path: Path) -> CsvTable:
     """Read and decode a CSV file (for the manual mapping dialog)."""
-    return decode_table(path.read_bytes())
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise StatementParseError(f"cannot read {path}") from error
+    return decode_table(raw)
 
 
 def decode_table(raw: bytes) -> CsvTable:
@@ -153,11 +158,27 @@ def import_table(
             raise CsvMappingError("no header row with date and amount columns found")
         mapping = guess_mapping(table.rows[header_row])
     first_data_row = 0 if header_row is None else header_row + 1
-    return parse_rows(table.rows, mapping, source, first_data_row)
+    iban = find_iban(table.rows[:first_data_row])
+    return parse_rows(table.rows, mapping, source, first_data_row, iban)
+
+
+def find_iban(rows: Sequence[Row]) -> str:
+    """The account's IBAN from the lines above the header (ING writes ``IBAN;DE12 …``), so
+    CSV bookings carry the same account as the PDF statements; empty if there is none."""
+    for row in rows:
+        for cell in row:
+            candidate = "".join(cell.split()).upper()
+            if is_valid_iban(candidate):
+                return candidate
+    return ""
 
 
 def parse_rows(
-    rows: Sequence[Row], mapping: ColumnMapping, source: str, first_row: int = 0
+    rows: Sequence[Row],
+    mapping: ColumnMapping,
+    source: str,
+    first_row: int = 0,
+    iban: str = "",
 ) -> ParsedStatement:
     """Read bookings from ``rows[first_row:]``; rows without a valid date or amount are
     skipped and reported by their index in ``rows``."""
@@ -167,21 +188,23 @@ def parse_rows(
 
     data = list(enumerate(rows))[first_row:]
     style = detect_decimal_style(_cell(row, mapping, CsvField.AMOUNT) for _, row in data)
+    account = account_from_iban(iban)
     transactions: list[Transaction] = []
     skipped: list[int] = []
     for index, row in data:
-        txn = _row_to_transaction(row, mapping, source, style)
+        txn = _row_to_transaction(row, mapping, source, style, account)
         if txn is None:
             skipped.append(index)
         else:
             transactions.append(txn)
 
-    info = StatementInfo(source=source, total=sum((t.amount for t in transactions), Decimal(0)))
+    total = sum((t.amount for t in transactions), Decimal(0))
+    info = StatementInfo(source=source, account=account, iban=iban, total=total)
     return ParsedStatement(info, tuple(transactions), ParseReport(skipped_rows=tuple(skipped)))
 
 
 def _row_to_transaction(
-    row: Row, mapping: ColumnMapping, source: str, style: DecimalStyle
+    row: Row, mapping: ColumnMapping, source: str, style: DecimalStyle, account: str = ""
 ) -> Transaction | None:
     booking_date = parse_flexible_date(_cell(row, mapping, CsvField.DATE))
     amount = parse_amount(_cell(row, mapping, CsvField.AMOUNT), style)
@@ -196,6 +219,7 @@ def _row_to_transaction(
         purpose=purpose,
         amount=amount,
         source=source,
+        account=account,
     )
 
 

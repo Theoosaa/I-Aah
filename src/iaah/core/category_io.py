@@ -113,8 +113,7 @@ def with_fallbacks(categories: Iterable[Category], defaults: CategoryCatalog) ->
 
 def catalog_to_json(catalog: CategoryCatalog) -> str:
     """Serialize a catalog to this program's JSON format."""
-    data = {FIELD_VERSION: FORMAT_VERSION, FIELD_CATEGORIES: [_to_dict(c) for c in catalog]}
-    return json.dumps(data, ensure_ascii=False, indent=2)
+    return json.dumps(catalog_to_data(catalog), ensure_ascii=False, indent=2)
 
 
 def catalog_from_json(text: str) -> CategoryCatalog:
@@ -122,6 +121,16 @@ def catalog_from_json(text: str) -> CategoryCatalog:
     data = _load_json(text)
     if isinstance(data, list):
         return _from_budgets(data)
+    return catalog_from_data(data)
+
+
+def catalog_to_data(catalog: CategoryCatalog) -> dict[str, Any]:
+    """The catalog as JSON-ready data (also embedded in the app's data file)."""
+    return {FIELD_VERSION: FORMAT_VERSION, FIELD_CATEGORIES: [_to_dict(c) for c in catalog]}
+
+
+def catalog_from_data(data: object) -> CategoryCatalog:
+    """Inverse of ``catalog_to_data``; ``CategoryFileError`` for anything malformed."""
     if not isinstance(data, dict) or data.get(FIELD_VERSION) != FORMAT_VERSION:
         raise CategoryFileError("unknown category file format")
     entries = data.get(FIELD_CATEGORIES)
