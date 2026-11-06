@@ -84,7 +84,7 @@ def test_card_payment_with_odd_payee_keeps_the_payee() -> None:
     first = _txn(date(2026, 7, 1), "VISA R.S.D.E.", "-5", CARD_PURPOSE)
     other = _txn(date(2026, 7, 1), "VISA K.L.M.", "-5", CARD_PURPOSE)
     assert merchant_key(first) != merchant_key(other)
-    assert merchant_label(first) == "R.S.D.E."
+    assert merchant_label(first) == "VISA R.S.D.E."  # no usable name: keep the full payee
 
 
 def test_only_pure_numbers_are_dropped_from_keys() -> None:
@@ -275,3 +275,59 @@ def test_period_validates_direct_construction(kind: PeriodKind, year: int, month
 def test_period_parse_accepts_ascii_digits_only() -> None:
     with pytest.raises(ValueError, match="period"):
         Period.parse("٢٠٢٦")
+
+
+# -- second review round ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "purpose",
+    [
+        "1/pp.1.pp/.,ihreinkaufbei Mandat:5LXJ224AB Referenz:1051374080449 Abcdef",
+        "1/pp.1.pp/., Ihr Einkauf bei Mandat: 5LXJ Referenz: 123",
+    ],
+)
+def test_paypal_without_merchant_keeps_the_payee(purpose: str) -> None:
+    txn = _txn(date(2026, 7, 1), PAYPAL, "-1", purpose)
+    assert merchant_key(txn).startswith("paypal")
+    assert merchant_label(txn).startswith("PayPal")
+
+
+def test_monthly_paypal_references_do_not_split_a_subscription() -> None:
+    months = (4, 5, 6, 7)
+    bookings = [
+        _txn(date(2026, m, 3), PAYPAL, "-9.99", f".Spotify,ihreinkaufbeiSpotify AB Referenz:X{m}11")
+        for m in months
+    ]
+    assert len({merchant_key(txn) for txn in bookings}) == 1
+    (payment,) = recurring_payments([_entry(txn, "Abos") for txn in bookings]).payments
+    assert payment.monthly == D("9.99")
+
+
+def test_purpose_patterns_only_apply_to_paypal() -> None:
+    klarna = _txn(date(2026, 7, 1), "Klarna", "-50", "Ihre Zahlung bei Zalando Bestellnummer 1234")
+    card = _txn(date(2026, 7, 1), "VISA 4711", "-5", "KAUFUMSATZ Erstattung bei Reklamation 55")
+    assert merchant_key(klarna) == "klarna"
+    assert merchant_label(card) == "VISA"
+
+
+def test_bookings_grouping_does_not_depend_on_order() -> None:
+    categorizer = _categorizer()
+    rents = [_txn(date(2026, month, 1), "Vermieter", "-800.00") for month in (5, 6, 7)]
+    for rent in rents:
+        parts = [SplitPart("Wohnen", D("-700.00")), SplitPart("Nebenkosten", D("-100.00"))]
+        categorizer.split(rent, parts)
+    shuffled = sorted(build_entries(rents, categorizer), key=lambda entry: entry.category)
+    assert len(transactions_of(shuffled)) == 3
+    assert len(recurring_payments(shuffled).payments) == 1
+
+
+def test_balance_of_a_period_includes_bookings_before_the_statement_period() -> None:
+    january = StatementInfo("jan.pdf", account="1", period="2026-01", opening_balance=D("100"))
+    bookings = [
+        _txn(date(2025, 12, 31), "a", "-40", source="jan.pdf"),
+        _txn(date(2026, 1, 15), "b", "-10", source="jan.pdf"),
+    ]
+    selected = statements_in_period([january], Period.parse("2026"))
+    points = account_balances(selected, bookings)["1"]  # all transactions, as documented
+    assert [point.balance for point in points] == [D("100"), D("60"), D("50")]

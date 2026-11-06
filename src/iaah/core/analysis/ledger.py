@@ -21,6 +21,7 @@ from iaah.core.models import Transaction
 ZERO: Final = Decimal(0)
 MONTHS_PER_YEAR: Final = 12
 FIRST_MONTH: Final = 1
+FIRST_DAY: Final = 1
 _YEAR: Final = re.compile(r"(?P<year>\d{4})", re.ASCII)
 _MONTH: Final = re.compile(r"(?P<year>\d{4})-(?P<month>\d{2})", re.ASCII)
 
@@ -56,18 +57,15 @@ def build_entries(transactions: Iterable[Transaction], categorizer: Categorizer)
 
 
 def bookings(entries: Iterable[Entry]) -> list[tuple[Transaction, list[Entry]]]:
-    """Entries grouped back into their bookings.
+    """Entries grouped back into their bookings, in order of first appearance.
 
-    Relies on ``build_entries`` emitting a booking's parts consecutively (filtering keeps that
-    order) and compares transactions by identity, so two identical bookings stay two.
+    Transactions are compared by identity, so two identical bookings stay two, and the result
+    does not depend on how the entries were sorted or filtered.
     """
-    groups: list[tuple[Transaction, list[Entry]]] = []
+    groups: dict[int, tuple[Transaction, list[Entry]]] = {}
     for entry in entries:
-        if groups and groups[-1][0] is entry.transaction:
-            groups[-1][1].append(entry)
-        else:
-            groups.append((entry.transaction, [entry]))
-    return groups
+        groups.setdefault(id(entry.transaction), (entry.transaction, []))[1].append(entry)
+    return list(groups.values())
 
 
 def transactions_of(entries: Iterable[Entry]) -> list[Transaction]:
@@ -204,7 +202,7 @@ def entries_of_day(entries: Iterable[Entry], day: date) -> list[Entry]:
 
 
 def _first_day(year: int, month: int) -> date:
-    return date(year, month, 1)
+    return date(year, month, FIRST_DAY)
 
 
 def _last_day(year: int, month: int) -> date:

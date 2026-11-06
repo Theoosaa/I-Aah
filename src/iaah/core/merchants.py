@@ -18,13 +18,19 @@ from iaah.core.models import Transaction
 from iaah.core.text import clean_display, normalize_text
 
 # Payment services that put themselves in front of the actual merchant.
-INTERMEDIARIES: Final = ("paypal", "visa", "mastercard", "klarna", "google pay", "apple pay")
+PAYPAL: Final = "paypal"
+INTERMEDIARIES: Final = (PAYPAL, "visa", "mastercard", "klarna", "google pay", "apple pay")
 # PayPal names the merchant twice: "…/pp.1234.pp/. Shop Name, ihr einkauf bei Shop Name …".
 # Either copy may have spaces inside words (PDF glyph spacing) or none at all (legacy text).
+# The second copy ends before "mandat:" / "referenz:" – reference numbers change every month
+# and must not become part of the merchant.
+_FIELD_LABEL: Final = r"(?:mandat|referenz)\s*:"
 PAYPAL_PATTERNS: Final = (
     re.compile(r"/\.\s*(?P<merchant>[^,]*?)\s*,\s*ihr"),
-    re.compile(r"ihr\s*einkauf\s*bei\s*(?P<merchant>.+?)(?:\s*mandat:|$)"),
-    re.compile(r"\bbei\s+(?P<merchant>.+?)(?:\s+mandat:|$)"),
+    re.compile(
+        rf"ihr\s*einkauf\s*bei\s*(?!{_FIELD_LABEL})(?P<merchant>.+?)\s*(?:{_FIELD_LABEL}|$)"
+    ),
+    re.compile(rf"\bbei\s+(?!{_FIELD_LABEL})(?P<merchant>.+?)\s*(?:{_FIELD_LABEL}|$)"),
 )
 # Card payments name the city: "nr xxxx 0010 hannover de kaufumsatz …".
 CARD_CITY: Final = re.compile(r"\bnr x+ \d+ (?P<city>.+?) [a-z]{2} kaufumsatz\b")
@@ -63,8 +69,8 @@ def is_city_word(word: str, city: frozenset[str]) -> bool:
 def merchant_text(txn: Transaction) -> str:
     """The normalized part of the booking that names the merchant.
 
-    For a payment service the payee rest ("visa rewe 435") if it names someone, else the
-    merchant PayPal writes into the purpose, else the payee rest as it is. The raw purpose is
+    For a payment service the payee rest ("visa rewe 435") if it names someone; for PayPal
+    the merchant it writes into the purpose; otherwise the full payee. The raw purpose is
     never used – it carries mandate and reference numbers.
     """
     payee = normalize_text(txn.payee)
@@ -74,7 +80,7 @@ def merchant_text(txn: Transaction) -> str:
     remainder = payee[len(intermediary) :].strip()
     if _has_meaningful_word(remainder):
         return remainder
-    return _merchant_from_purpose(normalize_text(txn.purpose)) or remainder or payee
+    return _paypal_merchant(intermediary, txn) or payee
 
 
 def merchant_key(txn: Transaction) -> str:
@@ -93,12 +99,12 @@ def merchant_label(txn: Transaction) -> str:
     words = payee.split()
     intermediary = _intermediary(normalize_text(payee))
     if intermediary is not None:
-        words = words[len(intermediary.split()) :]
-        if not _has_meaningful_word(normalize_text(" ".join(words))):
-            purpose_merchant = _merchant_from_purpose(normalize_text(txn.purpose))
-            if purpose_merchant:
-                # capwords, not title(): "netflix.com" -> "Netflix.com", not "Netflix.Com"
-                return string.capwords(purpose_merchant)
+        rest = words[len(intermediary.split()) :]
+        if _has_meaningful_word(normalize_text(" ".join(rest))):
+            words = rest
+        elif purpose_merchant := _paypal_merchant(intermediary, txn):
+            # capwords, not title(): "netflix.com" -> "Netflix.com", not "Netflix.Com"
+            return string.capwords(purpose_merchant)
     city = card_city_words(txn)
     kept = [word for word in words if not _is_noise(normalize_text(word), city)]
     return " ".join(kept) or payee
@@ -116,6 +122,13 @@ def _intermediary(normalized_payee: str) -> str | None:
         if normalized_payee == name or normalized_payee.startswith(f"{name} "):
             return name
     return None
+
+
+def _paypal_merchant(intermediary: str, txn: Transaction) -> str | None:
+    """The merchant PayPal names in the purpose; other services' purposes are not parsed."""
+    if intermediary != PAYPAL:
+        return None
+    return _merchant_from_purpose(normalize_text(txn.purpose))
 
 
 def _merchant_from_purpose(purpose: str) -> str | None:

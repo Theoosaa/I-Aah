@@ -18,6 +18,7 @@ from iaah.core.merchants import merchant_key, merchant_label
 
 BUDGET_WARNING_RATIO: Final = Decimal("0.8")  # above 80 % of the budget: yellow
 BUDGET_FULL_RATIO: Final = Decimal(1)  # above 100 %: red
+MIN_BUDGET_MONTHS: Final = 1  # a period counts at least one month of budget
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,7 +256,7 @@ def budget_status(
     first. ``months`` is the length of the selected period, which the caller knows best."""
     spent = expense_by_category(entries)
     statuses = [
-        _status(name, budget * max(months, 1), spent.get(name, ZERO))
+        _status(name, budget * max(months, MIN_BUDGET_MONTHS), spent.get(name, ZERO))
         for name, budget in budgets.items()
         if budget > 0
     ]

@@ -69,10 +69,12 @@ def account_balances(
 ) -> dict[str, list[BalancePoint]]:
     """The real balance per account: each statement's opening balance plus its bookings.
 
-    Bookings belong to a statement through ``Transaction.source``. Statements without an
-    opening balance (CSV exports) are skipped. Statements are taken in period order; each
-    starts with its opening balance on the first day of its period, or on its first booking
-    day if that is earlier.
+    Pass **all** transactions (not date-filtered ones): bookings belong to a statement through
+    ``Transaction.source``, and a statement may contain bookings dated before its period – the
+    selection happens through ``statements`` (see ``statements_in_period``). Statements
+    without an opening balance (CSV exports) are skipped. Statements are taken in period order;
+    each starts with its opening balance on the first day of its period, or on its first
+    booking day if that is earlier.
     """
     by_source: dict[str, list[Transaction]] = defaultdict(list)
     for txn in transactions:

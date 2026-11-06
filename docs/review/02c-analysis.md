@@ -25,3 +25,21 @@ stopped.
 | 10 | low | `months=0` gave limit 0 and level OK; ratio computed twice. | **Fixed.** At least one month; `ratio` is a field. |
 | 11 | low | `ZERO` defined three times; magic `- 2`; unused `counted()`; `Period` unvalidated, non-ASCII digits accepted; undocumented deviations. | **Fixed.** One `ZERO` in `ledger`; month index helpers; `counted` removed; `Period.__post_init__` validates; `re.ASCII`; design note updated. `Period` keeps `0` for unused fields (simpler than `None`, now validated). |
 | 12 | low | Test gaps (all of the above, bookings-per-month rule, variation boundary, two-month detection, multiple accounts, balance without bookings, income in cash flow, year boundary in calendar). | **Fixed** in `test_analysis_review.py`. One of my own new tests was wrong (February 2026 needs 5 week columns, not 4) – the code was right. |
+
+## Second round (revised code only)
+
+The reviewer verified first-round fixes 2–12 (active/stopped payments across a year boundary
+and for past-year views, calendar with bounds, all 688 keyword candidates on the legacy data
+matching their own booking) and found that fix 1 held only partly and fixes 3 and 6 only while
+entries keep their original order.
+
+After revision: 350 tests green, ruff/format/mypy clean. Legacy PayPal labels: at most 41
+characters, none with reference digits; 11 bookings without a merchant are grouped as "PayPal".
+
+| # | Sev. | Finding | Disposition |
+|---|---|---|---|
+| R1 | med | PayPal merchant ran to the end of the purpose or started with "mandat:"; monthly reference numbers split one subscription into several merchants (never recurring). | **Fixed.** The merchant ends before `mandat:`/`referenz:` and may not start with them; tests for empty merchants and a monthly-changing reference. |
+| R2 | low | Purpose patterns also applied to Klarna/card payments ("… bei Reklamation"); PayPal without merchant lost the word "PayPal". | **Fixed.** Purpose parsed for PayPal only; without a usable name the full payee is key and label. |
+| R3 | med | `bookings()` relied on consecutive parts – sorting the entries broke fixed costs and balances. | **Fixed.** Grouped by transaction identity in a dict (order of first appearance); test with entries sorted by category. |
+| R4 | med | Balance of a period lost bookings dated before their statement's period when fed date-filtered transactions. | **Documented and tested:** `account_balances` takes all transactions and selects through `statements_in_period`; test with a booking on 31 Dec in a January statement. |
+| R5 | low | Magic numbers `max(months, 1)`, `date(…, 1)`. | **Fixed** (`MIN_BUDGET_MONTHS`, `FIRST_DAY`). |
