@@ -20,6 +20,8 @@ from iaah.core.analysis.totals import category_totals
 from iaah.core.categories import CategoryKind
 from iaah.core.errors import IaahError
 from iaah.core.text import (
+    COMMA,
+    DOT,
     decode_text,
     detect_decimal_style,
     format_euro,
@@ -115,7 +117,8 @@ def _section(title: str, amounts: Mapping[str, Decimal], total: Decimal, width: 
         lines.append(NONE_LINE)
     for name, amount in amounts.items():
         share = amount / total * PERCENT if total else Decimal(0)
-        lines.append(f"{name:<{width}} {format_euro(amount):>{AMOUNT_WIDTH}}  ({share:5.1f} %)")
+        percent = f"{share:5.1f}".replace(DOT, COMMA)  # German: 57,6 %
+        lines.append(f"{name:<{width}} {format_euro(amount):>{AMOUNT_WIDTH}}  ({percent} %)")
     lines += [rule, f"{TOTAL:<{width}} {format_euro(total):>{AMOUNT_WIDTH}}"]
     return "\n".join(lines)
 

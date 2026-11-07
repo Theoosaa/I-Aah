@@ -9,12 +9,12 @@ rule changes, change it here first.
 I-Aah reads German bank statements (ING-DiBa PDF, generic CSV exports), assigns every
 booking to a category via keyword lists, lets the user review and correct that in a
 Tkinter GUI, and analyses spending over months and years (charts, budgets, exports).
-It merges two earlier tools: the legacy I-Aah app (`kontoanalyse.py`) and *budgets*
-(MIT, see `LICENSES/`). I-Aah itself is MIT-licensed (`LICENSE`).
+It merges two earlier tools: the legacy single-file I-Aah app (`kontoanalyse.py`, removed; its
+data files are read by `core/migration.py`) and *budgets* (MIT, see `LICENSES/`). I-Aah itself
+is MIT-licensed (`LICENSE`).
 
-**Status:** the unification is in progress (plan and per-step notes in `docs/`). `iaah` /
-`python -m iaah` (GUI) and `iaah-cli` work; the legacy files (`kontoanalyse.py` and friends)
-are removed in the last step.
+**Status:** the unification is complete; design and review notes of every step are in `docs/`.
+Entry points: `iaah` / `python -m iaah` (GUI) and `iaah-cli`.
 
 ## Setup
 

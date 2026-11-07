@@ -1,5 +1,6 @@
 """Start-up and legacy migration, with every dialog replaced by scripted answers (no display)."""
 
+import base64
 import json
 import tkinter as tk
 from collections.abc import Iterable
@@ -8,8 +9,10 @@ from tkinter import filedialog, messagebox
 from typing import Any, Final, cast
 
 import pytest
+from cryptography.fernet import Fernet
 
 from iaah.core.category_io import default_catalog
+from iaah.core.crypto import LEGACY_ITERATIONS, MAGIC_LEGACY, Cipher, is_encrypted
 from iaah.core.library import Library
 from iaah.core.storage import DataPaths, DataStore
 from iaah.core.workspace import Workspace
@@ -18,6 +21,7 @@ from iaah.gui.session import Session
 
 ROOT: Final = cast(tk.Misc, object())  # never touched: every dialog is replaced
 FAST_ITERATIONS: Final = 1_000
+SECRET_PAYEE: Final = "Geheimer Empfänger"
 LEGACY_SETTINGS: Final[dict[str, Any]] = {
     "version": 2,
     "categories": [{"name": "Lebensmittel", "color": "#123456"}],
@@ -175,6 +179,33 @@ def test_the_start_offers_legacy_data_only_to_a_pristine_state(
     assert "Haustier" in own.catalog
     fresh = Session(Workspace(default_catalog(), Library()))
     assert not startup.offer_migration(ROOT, fresh, tmp_path)  # no legacy files there
+
+
+def test_encrypted_legacy_data_stays_encrypted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    folder = _legacy_folder(tmp_path)
+    booking = {
+        "datum": "2026-07-01", "buchungsart": "Lastschrift", "empfaenger": SECRET_PAYEE,
+        "zweck": "", "betrag": -5.0, "monat": "2026-07", "quelle": "juli.pdf", "konto": "123",
+    }  # fmt: skip
+    data = {"version": 2, "files": [], "statements": [], "transactions": [booking]}
+    salt = b"0123456789abcdef"
+    token = Fernet(Cipher.derive("geheim", salt, LEGACY_ITERATIONS).key).encrypt(
+        json.dumps(data).encode()
+    )
+    (folder / "data.json").write_bytes(MAGIC_LEGACY + base64.b64encode(salt) + b"\n" + token)
+    paths = DataPaths(tmp_path / "neu")
+    session = Session(Workspace(default_catalog(), Library()), DataStore(paths))
+    Script(monkeypatch, passwords=["geheim"])
+    assert startup.migrate_from(ROOT, session, folder)
+    assert session.encrypted
+    stored = paths.data.read_bytes()
+    assert is_encrypted(stored)
+    assert SECRET_PAYEE.encode() not in stored
+    reopened = DataStore(paths)
+    reopened.unlock("geheim")
+    assert reopened.load()[1].transactions[0].payee == SECRET_PAYEE
 
 
 def test_the_menu_refuses_a_library_with_statements(

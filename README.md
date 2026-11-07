@@ -9,13 +9,13 @@ Rechner – auf Wunsch verschlüsselt.
 
 - **Import:** ING-Girokonto-PDFs (auch viele auf einmal, ganze Ordner) und CSV-Dateien mit
   automatischer oder eigener Spaltenzuordnung. Doppelte Buchungen werden erkannt, der
-  Saldo jedes Auszugs wird nachgerechnet.
+  Saldo jedes PDF-Auszugs wird nachgerechnet.
 - **Zuordnen:** Kategorien bestehen aus Stichwortlisten. Was kein Stichwort trifft, landet in
   einer Auffang-Kategorie und gilt als *offen*. Zuordnen per farbigem Knopf, Tasten 1–9 oder
   Rechtsklick; Buchungen lassen sich auf mehrere Kategorien aufteilen; alles ist rückgängig
   zu machen.
 - **Stichwort-Vorschläge:** Nach einer Zuordnung von Hand schlägt das Programm Stichwörter vor
-  und zeigt vorher, wie viele andere Buchungen sie träfen. Regeln entstehen nie heimlich.
+  und zeigt vorher, wie viele Buchungen sie träfen. Regeln entstehen nie heimlich.
 - **PDF-Prüfung:** der Original-Auszug mit farbig markierten Buchungen – so siehst du, ob alles
   erkannt wurde und welche Zeilen nicht als Buchung zählen.
 - **Auswertung:** 13 Diagramme, Kennzahlen mit Vergleich zur Vorperiode, Klick auf ein Segment
@@ -38,7 +38,8 @@ py -3.14 -m venv .venv
 pip install -e .
 ```
 
-Unter Linux/macOS heißt die zweite Zeile `source .venv/bin/activate`.
+Unter Linux/macOS lauten die ersten beiden Zeilen `python3 -m venv .venv` und
+`source .venv/bin/activate`.
 
 ## Starten
 
@@ -93,8 +94,10 @@ Jeden Monat genügt es, den neuen Auszug zu importieren – alles Bisherige blei
 
 ### PDF-Prüfung
 
-Zeigt einen importierten Auszug als Bild, jede Buchung farbig hinterlegt. Ein Klick auf eine
-Markierung wählt die Buchung; zuordnen geht auch hier mit den Knöpfen oder Tasten 1–9.
+Zeigt einen importierten Auszug als Bild, jede Buchung farbig hinterlegt; Buchungen, deren
+Kategorie du von Hand geändert hast, sind dunkel umrandet. Oben wählst du den Auszug, blätterst
+mit ◀ ▶ und zoomst mit − + (oder Strg+Mausrad). Ein Klick auf eine Markierung wählt die
+Buchung; das Zuordnen geht auch hier mit den Knöpfen oder den Tasten 1–9.
 **Vorher (nur Stichwörter) zeigen** blendet deine Zuordnungen von Hand aus. Die Liste
 **Nicht verwendete Zeilen** nennt Zeilen, die das Programm nicht zu einer Buchung gezählt hat,
 mit Grund (z. B. „neben der Buchungsspalte“, „zu weit unter der Buchung“). Ganz oben stehen
@@ -107,8 +110,9 @@ importiere sie am neuen Ort noch einmal – das Programm erkennt sie und merkt s
 ### Auswertung
 
 Oben **Zeitraum** (Gesamt, ein Jahr oder ein Monat) und **Diagramm**. Die Kacheln zeigen
-Einnahmen, Ausgaben, Netto gespart, Sparquote und Ø Ausgaben je Monat, bei einem Jahr oder Monat
-mit Vergleich zur Vorperiode (▲/▼, grün = besser). Unter jedem Diagramm erklärt eine Zeile (ⓘ),
+Einnahmen, Ausgaben, Netto gespart und Sparquote – bei einem Jahr oder Monat mit Vergleich zur
+Vorperiode (▲/▼, grün = besser) – sowie *Ø Ausgaben / Monat* mit der Zahl der Monate, über die
+gemittelt wird. Unter jedem Diagramm erklärt eine Zeile (ⓘ),
 was es zeigt; steht dort ein Klick-Tipp, öffnet ein Klick auf ein Segment die zugehörigen
 Buchungen. Die Werkzeugleiste darunter kann zoomen und das Bild speichern.
 
@@ -117,22 +121,26 @@ Kategorie-Vergleich zur Vorperiode · Kategorie-Entwicklung über Zeit · Ausgab
 Monat (gestapelt) · Jahresvergleich · Fixkosten vs. variabel (Abos erkennen) · Budget-Ampel ·
 Top-Empfänger · Kalender-Heatmap · Echter Kontostand · Saldo-Verlauf (relativ).
 
-Kategorien der Art *Ignoriert* (z. B. Umbuchungen aufs eigene Sparkonto) zählen in keiner
-Auswertung mit. Erstattungen mindern die Ausgaben ihrer Kategorie.
+Kategorien der Art *Ignoriert* (z. B. Umbuchungen aufs eigene Sparkonto) zählen weder bei
+Einnahmen, Ausgaben und Sparquote noch in Kategorie-, Budget- oder Empfänger-Diagrammen mit.
+*Echter Kontostand* und *Saldo-Verlauf* zeigen dagegen alle Buchungen, so wie das Konto sie
+sieht. Erstattungen mindern die Ausgaben ihrer Kategorie.
 
 ### Budgets
 
-Ein Monatsbudget je Ausgaben-Kategorie, daneben der Ø-Ist-Wert je Monat im gewählten Zeitraum.
+Ein Monatsbudget je Ausgaben-Kategorie, daneben der Ø-Ist-Wert je Monat im oben gewählten
+Zeitraum. Die Spalte *Stand* zeigt, wie voll das Budget ist (bis 80 % im Rahmen, bis 100 % fast
+erreicht, darüber überzogen – grün, gelb, rot); dasselbe zeigt das Diagramm *Budget-Ampel*.
 Leer oder 0 bedeutet: kein Budget. **Budgets speichern** übernimmt alle Eingaben auf einmal.
-Die Ampel steht im Diagramm *Budget-Ampel* (bis 80 % grün, bis 100 % gelb, darüber rot).
 
 ### Kategorien
 
 Links die Liste (▲/▼ ändert die Reihenfolge – sie bestimmt die Tasten 1–9), rechts die
 gewählte Kategorie: Name, **Farbe…**, **Art** (Ausgabe, Einnahme, Ignoriert), Monatsbudget und
 die **Stichwörter** (Hinzufügen, Ändern, Entfernen). **Löschen** nennt vorher, wie viele
-Zuordnungen von Hand an der Kategorie hängen. *Sonstiges* und *Einkommen* sind die
-Auffang-Kategorien und lassen sich nicht löschen.
+Zuordnungen von Hand an der Kategorie hängen, und entfernt sie mit (Strg+Z holt alles zurück).
+*Sonstiges* und *Einkommen* sind die Auffang-Kategorien: Sie lassen sich weder löschen noch in
+ihrer Art ändern.
 
 ## Menüs
 
@@ -140,7 +148,8 @@ Auffang-Kategorien und lassen sich nicht löschen.
 - *Kontoauszüge importieren (PDF, CSV)…* – eine oder mehrere Dateien.
 - *Alle PDFs eines Ordners importieren…* – alle PDFs direkt im Ordner (ohne Unterordner).
 - *CSV mit eigener Spaltenzuordnung…* – wenn die automatische Erkennung danebenliegt: Kopfzeile,
-  Datum, Betrag, Empfänger und Verwendungszweck selbst wählen, mit Vorschau.
+  Datum, Betrag, Empfänger und Verwendungszweck selbst wählen, mit Vorschau. Erkennt der normale
+  Import die Spalten gar nicht, öffnet sich derselbe Dialog von selbst.
 - *Exportieren*
   - *Buchungen (gefiltert) als CSV…* – die im Tab *Transaktionen* angezeigten Buchungen,
     `;`-getrennt, Dezimalkomma (öffnet direkt in Excel); eine aufgeteilte Buchung ergibt eine
@@ -161,8 +170,9 @@ Auffang-Kategorien und lassen sich nicht löschen.
 Auswahl automatisch zuordnen · Überflüssige manuelle Zuordnungen entfernen (solche, die
 ohnehin dasselbe Ergebnis wie die Stichwörter hätten).
 
-**Kategorien:** Neue Kategorie… · Kategorien aus Datei laden… · Kategorien speichern unter…
-(JSON oder CSV, siehe unten).
+**Kategorien:** Neue Kategorie… · Kategorien aus Datei laden… (ersetzt alle aktuellen
+Kategorien und Stichwörter; Strg+Z macht es rückgängig) · Kategorien speichern unter… (JSON
+oder CSV, siehe unten).
 
 **Ansicht:** Dunkles Design · die fünf Tabs (Strg+1 … Strg+5).
 
@@ -183,22 +193,26 @@ löschen…
 
 ## Kategorien und Stichwörter
 
-- Ein Stichwort trifft, wenn es in **Empfänger oder Verwendungszweck** am Anfang eines Wortes
-  steht. Groß- und Kleinschreibung, Umlaute und Akzente spielen keine Rolle (`ä` = `ae`,
+- Ein Stichwort trifft, wenn es im **Empfänger** oder im **Verwendungszweck** am Anfang eines
+  Wortes steht. Groß- und Kleinschreibung, Umlaute und Akzente spielen keine Rolle (`ä` = `ae`,
   `ß` = `ss`).
 - Treffen mehrere Stichwörter, gewinnt das **längste** („amazon prime“ vor „amazon“).
 - Ein Stichwort gehört genau einer Kategorie; das Programm meldet Überschneidungen.
 - Stichwörter einer Einnahmen-Kategorie treffen nur Geldeingänge.
-- Ohne Treffer: Ausgaben → **Sonstiges**, Einnahmen → **Einkommen** (beides „offen“).
+- Ohne Treffer: Ausgaben → **Sonstiges**, Einnahmen → **Einkommen**. Solche Buchungen gelten
+  als „offen“, bis du sie zuordnest – auch das Bestätigen der Auffang-Kategorie per Knopf zählt
+  als Entscheidung (`✎`).
 - Eine Zuordnung von Hand oder eine Aufteilung hat immer Vorrang vor den Stichwörtern.
 
 **Dateiformate** für *Kategorien aus Datei laden…* und *Kategorien speichern unter…*: am
 einfachsten erzeugst du eine Vorlage mit *Kategorien speichern unter…*.
 
-- JSON: `{"version": 1, "categories": [{"name": …, "color": "#rrggbb", "kind": "expense" | "income" | "ignored", "budget": "250.00", "keywords": […]}]}`;
-  die Auffang-Kategorien tragen zusätzlich `"role": "expense_fallback"` bzw. `"income_fallback"`.
+- JSON: `{"version": 1, "categories": [{"name": …, "color": "#rrggbb", "kind": "expense" | "income" | "ignored", "budget": "250.00", "keywords": […]}]}`.
+  In eigenen JSON-Dateien muss je eine Kategorie `"role": "expense_fallback"` bzw.
+  `"income_fallback"` tragen.
 - CSV: Spalten `name;color;kind;role;budget;keywords`, Stichwörter durch `|` getrennt.
-- Kategorie-Dateien des Projekts *budgets* (JSON oder CSV) werden ebenfalls gelesen.
+- Kategorie-Dateien des Projekts *budgets* (JSON oder CSV) werden ebenfalls gelesen. CSV- und
+  *budgets*-Dateien ohne Auffang-Kategorien bekommen *Sonstiges* und *Einkommen* automatisch.
 
 ## Wo liegen die Daten?
 
@@ -210,14 +224,17 @@ Nicht im Programmordner, sondern im Benutzer-Datenordner (**Hilfe → Datenordne
 
 | Datei | Inhalt |
 |---|---|
-| `library.json` | Kategorien, Stichwörter, Budgets, importierte Auszüge (mit Pfad zur PDF), Buchungen und deine Zuordnungen – mit Passwort verschlüsselt |
+| `library.json` | Kategorien, Stichwörter, Budgets, importierte Auszüge (mit Pfad zur PDF), Buchungen und deine Zuordnungen – verschlüsselt, sobald ein Passwort festgelegt ist |
 | `library.json.bak` | die vorige Fassung, bei jedem Speichern erneuert |
 | `ui_state.json` | Fenstergröße, Design, Tab, Zeitraum, Diagramm – nie verschlüsselt, enthält keine Buchungsdaten |
 | `iaah.lock` | verhindert, dass das Programm zweimal läuft |
 
 Gespeichert wird nach jeder Änderung, immer zuerst in eine temporäre Datei. Ist `library.json`
 beschädigt, legt das Programm sie als `library.json.damaged-<Zeit>` beiseite und lädt die
-Sicherung; es löscht dabei nichts. Solche Kopien entfernt *Datenschutz → Beschädigte Kopien
+Sicherung; es löscht dabei nichts. Gibt es keine lesbare Sicherung, fragt es, ob es die
+beschädigten Dateien beiseitelegen und leer starten soll („Nein“ beendet es). Lässt sich die
+Datei gar nicht lesen (gesperrt, keine Zugriffsrechte), meldet es das und beendet sich, ohne
+etwas zu verändern. Beiseitegelegte Kopien entfernt *Datenschutz → Beschädigte Kopien
 löschen…*.
 
 **Passwortschutz:** *Datenschutz → Passwort festlegen oder ändern…* verschlüsselt
@@ -233,29 +250,38 @@ Die alte I-Aah-Version (`kontoanalyse.py`) speicherte alles als `settings.json` 
 1. Neue Version starten. Startest du sie im alten Programmordner (z. B. `iaah` in einer
    Konsole, die dort steht), bietet das Programm die Übernahme beim ersten Start gleich an;
    sonst **Datei → Alte I-Aah-Daten übernehmen…** und den alten Programmordner wählen.
-2. War `data.json` verschlüsselt, fragt das Programm nach dem alten Passwort.
+2. War `data.json` verschlüsselt, fragt das Programm nach dem alten Passwort. Die neuen Daten
+   werden dann gleich mit demselben Passwort verschlüsselt gespeichert.
 3. Ein Bericht zeigt, was übernommen wurde: Kategorien mit Farben und Budgets, Regeln als
-   Stichwörter, Zuordnungen von Hand und Aufteilungen, Buchungen. Regex-Regeln, die sich nicht
-   in ein Stichwort übersetzen lassen, werden aufgelistet.
+   Stichwörter, Zuordnungen von Hand und Aufteilungen, Buchungen. Er listet auch, was nicht
+   übernommen werden konnte (z. B. Regex-Regeln, die sich nicht in ein Stichwort übersetzen
+   lassen, oder Betragsgrenzen von Regeln) und welche Buchungen jetzt automatisch eine andere
+   Kategorie bekommen.
 
 Die alten Dateien werden nur gelesen, nie verändert. Übernommen wird nur in eine noch leere
 Bibliothek; vorhandene eigene Kategorien oder Zuordnungen werden nicht ohne Rückfrage ersetzt.
-Danach kannst du die alten Dateien archivieren oder löschen. Alte Buchungen haben keine
+Danach kannst du die alten Dateien (`settings.json`, `data.json`, `ui_state.json` und ihre
+`.bak`) archivieren oder löschen – Fenstergröße und Filter der alten Version werden nicht
+übernommen. Alte Buchungen haben keine
 Position im PDF – importiere die Auszüge einmal neu, dann erscheinen sie auch in der
 PDF-Prüfung (doppelt gezählt wird dabei nichts).
 
 ## Kommandozeile
 
-`iaah-cli --help` zeigt alle Befehle. `-v` zeigt bei Fehlern Details.
+`iaah-cli --help` zeigt alle Befehle, `iaah-cli <Befehl> --help` deren Optionen.
+`iaah-cli -v <Befehl> …` (`-v` vor dem Befehl) zeigt bei Fehlern Details.
 
 ```powershell
-# Erkennung prüfen: Buchungen, Saldo-Abgleich, auffällige Zeilen (mit --lines jede Zeile)
+# Erkennung prüfen: Buchungen, Saldo-Abgleich, auffällige Zeilen (mit --lines jede Zeile).
+# Rückgabewert: 0 = alles in Ordnung, 1 = etwas ansehen, 2 = Datei nicht lesbar / falscher Aufruf
 iaah-cli check Auszug.pdf
 
-# Summen je Kategorie, als Text, CSV, Diagramm und/oder PDF-Report
+# Summen je Kategorie als Text (Bildschirm), CSV (zusammenfassung.csv), Diagramm (ausgaben.png)
+# und/oder PDF-Report (report.pdf) im Ordner --output-dir
 iaah-cli summary Auszüge\*.pdf --period 2026 --format text csv chart report --output-dir Auswertung
 
-# … mit deinen Kategorien und Zuordnungen aus der App (nur lesend)
+# … mit Buchungen, Kategorien und Zuordnungen der App (nur lesend; fragt bei Passwortschutz
+# nach dem Passwort)
 iaah-cli summary --library --period 2026-07
 
 # … oder mit einer Kategorie-Datei
@@ -264,8 +290,11 @@ iaah-cli summary Auszug.pdf --categories kategorien.json
 # Markiertes PDF (Standard: <Name>_markiert.pdf daneben)
 iaah-cli highlight Auszug.pdf -o markiert.pdf
 
-# Mehrere Zusammenfassungen (CSV) addieren
-iaah-cli merge januar.csv februar.csv --format text csv
+# Mehrere Zusammenfassungen (CSV) addieren – jede in einen eigenen Ordner schreiben, weil
+# summary immer zusammenfassung.csv heißt
+iaah-cli summary Januar.pdf --format csv --output-dir januar
+iaah-cli summary Februar.pdf --format csv --output-dir februar
+iaah-cli merge januar\zusammenfassung.csv februar\zusammenfassung.csv --format text csv --output-dir gesamt
 ```
 
 ## Windows-Programm bauen
@@ -276,21 +305,22 @@ Eine eigenständige `I-Aah.exe`, die ohne Python läuft:
 pip install -e ".[build]"
 pyinstaller --noconfirm --clean --onefile --windowed --name I-Aah `
   --paths src `
-  --collect-data iaah --copy-metadata iaah `
+  --collect-data iaah `
   --collect-data pdfminer --collect-data reportlab `
   --add-data "LICENSE;." --add-data "LICENSES;LICENSES" `
   src\iaah\__main__.py
 ```
 
-Das Ergebnis liegt in `dist\I-Aah.exe`. Sie nutzt denselben Datenordner wie die installierte
-Version. Der erste Start dauert einige Sekunden, weil die Datei sich entpackt.
+Das Ergebnis liegt in `dist\I-Aah.exe`; die Zwischendateien (`build\`, `I-Aah.spec`) kannst du
+löschen. Die `.exe` nutzt denselben Datenordner wie die installierte Version. Jeder Start dauert
+einige Sekunden, weil sich das Programm zuerst in einen temporären Ordner entpackt.
 
 ## Hinweise
 
 - PDFs: getestet mit Girokonto-Auszügen der ING. Andere Banken haben ein anderes Layout –
   für sie ist der CSV-Import da.
-- Manche ING-PDFs enthalten Umlaute in einer kaputten Schriftkodierung; die Anzeige repariert
-  die bekannten Fälle, die Zuordnung ist davon nicht betroffen.
+- Manche ING-PDFs enthalten Umlaute in einer kaputten Schriftkodierung; Anzeige und
+  Stichwort-Suche reparieren die bekannten Fälle.
 
 ## Entwicklung
 

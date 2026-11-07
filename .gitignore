@@ -224,14 +224,18 @@ __marimo__/
 # .vscode/settings.json are not affected.
 /settings.json
 /data.json
-/library.json
+/library.json*
 /categories.json
+/kategorien.json
 /ui_state.json
+/iaah.lock
 *.bak
 *.tmp
-# Bank statements and exports (PDF, CSV, Excel) anywhere in the tree …
+# Bank statements and exports (PDF, CSV, Excel, text summary, chart) anywhere in the tree …
 *.pdf
 *.csv
 *.xlsx
+zusammenfassung*.txt
+ausgaben.png
 # … except synthetic test fixtures.
 !tests/fixtures/**

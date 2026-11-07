@@ -396,13 +396,22 @@ class Session:
             self.save()
         return moved
 
-    def adopt(self, catalog: CategoryCatalog, library: Library) -> None:
+    def adopt(
+        self, catalog: CategoryCatalog, library: Library, password: str | None = None
+    ) -> None:
         """Take over migrated data as the new state; undo starts afresh. Only call it while
-        ``is_pristine`` – or after the user confirmed replacing what is there."""
+        ``is_pristine`` – or after the user confirmed replacing what is there.
+
+        ``password`` – the legacy data was encrypted with it: the adopted data is written
+        encrypted with it right away, never as plain text, unless the data already has a
+        password of its own (that one stays)."""
         self.workspace = Workspace(catalog, library)
         self.selection, self._undo, self._redo = [], [], []
         self.filters = Filters()
         self._changed()
+        if password is not None and not self.encrypted:
+            self.enable_encryption(password)
+            return
         self.save()
 
     # -- password -----------------------------------------------------------------------------

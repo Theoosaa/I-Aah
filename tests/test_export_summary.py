@@ -62,6 +62,9 @@ def test_text_summary(workspace: Workspace) -> None:
     assert "Wohnen" in text
     assert text.splitlines()[-1].startswith("Netto (Einnahmen - Ausgaben)")
     assert text.splitlines()[-1].endswith("1.371,57 €")
+    shares = [line[line.rindex("(") :] for line in text.splitlines() if line.endswith(" %)")]
+    assert shares
+    assert all("," in share and "." not in share for share in shares)  # German: (57,6 %)
     assert "(keine Buchungen)" in render_text_summary(Summary())
 
 

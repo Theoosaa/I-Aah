@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iaah"
-version = "4.0.0"
+dynamic = ["version"]  # iaah.__version__
 description = "Read German bank statements (ING PDF, generic CSV), categorize, review and chart spending."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -39,6 +39,9 @@ iaah-cli = "iaah.cli:main"
 [project.gui-scripts]
 iaah = "iaah.gui.app:main"
 
+[tool.setuptools.dynamic]
+version = { attr = "iaah.__version__" }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -50,9 +53,8 @@ iaah = ["data/*.json"]
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
-# Legacy single-file app (removed in step 5 of the unification) and design notes,
-# whose code blocks are deliberately compact pseudo-code.
-extend-exclude = ["kontoanalyse.py", "parser.py", "highlight.py", "smoke_test.py", "docs"]
+# Design notes, whose code blocks are deliberately compact pseudo-code.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = [

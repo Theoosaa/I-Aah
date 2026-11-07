@@ -156,7 +156,9 @@ def _replace_confirmed(root: tk.Misc, session: Session) -> bool:
 
 
 def migrate_from(root: tk.Misc, session: Session, folder: Path) -> bool:
-    """Read, migrate and adopt the legacy files; show the report. ``True`` if adopted."""
+    """Read, migrate and adopt the legacy files; show the report. ``True`` if adopted.
+    Encrypted legacy data stays encrypted: the new data file gets the same password."""
+    password: str | None = None
     try:
         legacy = read_legacy(folder)
     except PasswordRequiredError:
@@ -173,13 +175,13 @@ def migrate_from(root: tk.Misc, session: Session, folder: Path) -> bool:
     except IaahError as error:
         messagebox.showerror(APP_TITLE, error_message(error), parent=root)
         return False
-    return _adopt(root, session, legacy)
+    return _adopt(root, session, legacy, password)
 
 
-def _adopt(root: tk.Misc, session: Session, legacy: LegacyData) -> bool:
+def _adopt(root: tk.Misc, session: Session, legacy: LegacyData, password: str | None) -> bool:
     try:
         migration = migrate(legacy, default_catalog())
-        session.adopt(migration.catalog, migration.library)
+        session.adopt(migration.catalog, migration.library, password)
     except IaahError as error:
         messagebox.showerror(APP_TITLE, error_message(error), parent=root)
         return False

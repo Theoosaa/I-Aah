@@ -25,7 +25,9 @@ deleted afterwards.
 
 * `pyproject.toml`: the legacy names leave `extend-exclude` (only `docs` stays).
 * `AGENTS.md`: status says the unification is complete; the legacy-file remark goes.
-* `.gitignore` already covers `build/`, `dist/` and `*.spec` – nothing to add.
+* `.gitignore` already covers `build/`, `dist/` and `*.spec`. The review found personal-data
+  files it missed (the README's `kategorien.json`, the text summary, the CLI chart, damaged
+  copies, the lock file); they were added.
 
 ## Deviation from the plan: no `categories.example.json`
 
@@ -63,7 +65,7 @@ Texts follow the GUI labels exactly (copied from `gui/app.py` and the tabs).
 pip install -e ".[build]"
 pyinstaller --noconfirm --clean --onefile --windowed --name I-Aah `
   --paths src `
-  --collect-data iaah --copy-metadata iaah `
+  --collect-data iaah `
   --collect-data pdfminer --collect-data reportlab `
   --add-data "LICENSE;." --add-data "LICENSES;LICENSES" `
   src\iaah\__main__.py
@@ -71,8 +73,10 @@ pyinstaller --noconfirm --clean --onefile --windowed --name I-Aah `
 
 * `--paths src` – finds the package even if the editable install uses an import hook.
 * `--collect-data iaah` – the bundled default catalog (`importlib.resources`).
-* `--copy-metadata iaah` – `iaah.__version__` reads the installed metadata; without it the
-  import fails inside the `.exe`.
+* No `--copy-metadata`: the first draft needed it because `iaah.__version__` read the installed
+  metadata – which carries `direct_url.json` with the path of the developer's checkout (review
+  finding 16). The version now lives in `iaah/__init__.py` and `pyproject.toml` reads it from
+  there (`dynamic = ["version"]`), so nothing needs the metadata at run time.
 * `pdfminer` ships CMap files, `reportlab` its standard fonts – both are data, not code.
   matplotlib, Tk and cryptography are covered by PyInstaller's own hooks.
 * `LICENSE`/`LICENSES` travel with the binary (MIT notice of *budgets*).
@@ -82,8 +86,10 @@ check that the window opens and the default categories are there, close it.
 
 ## Checks
 
-`pytest`, `ruff check .`, `ruff format --check .`, `mypy`. No new tests: no behaviour changes.
-A grep confirms no remaining references to the removed files outside `docs/`.
+`pytest`, `ruff check .`, `ruff format --check .`, `mypy`. A grep confirms no remaining
+references to the removed files outside `docs/`. The review turned up two behaviour changes,
+each with a test: encrypted legacy data stays encrypted after the migration, and the text
+summary prints percentages with a decimal comma.
 
 ## Afterwards (done by the user)
 
