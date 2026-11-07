@@ -3,15 +3,21 @@
 import queue
 import tkinter as tk
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
+from tkinter import filedialog
+from typing import Final
 
 import pytest
 
 from iaah.core.storage import DataPaths, DataStore
 from iaah.core.workspace import Workspace, file_sha256
-from iaah.gui import importer
+from iaah.gui import exports, importer
 from iaah.gui.app import App
 from iaah.gui.dialogs.simple import PasswordDialog
+from iaah.gui.session import Session
+
+DIALOG_DELAY_MS: Final = 100
 
 
 @pytest.fixture
@@ -76,3 +82,96 @@ def test_known_files_are_skipped_without_parsing(statement_pdf: Path) -> None:
     importer._work([statement_pdf], known, results)
     outcome = results.get()
     assert outcome is not None and outcome.parsed is None and outcome.error is None
+
+
+# -- third review round -----------------------------------------------------------------------
+
+
+def _app(root: tk.Tk, workspace: Workspace, tmp_path: Path) -> App:
+    app = App(root, DataStore(DataPaths(tmp_path)), workspace)
+    root.update()
+    return app
+
+
+def test_ctrl_digits_switch_tabs_but_never_assign(
+    root: tk.Tk, workspace: Workspace, tmp_path: Path
+) -> None:
+    app = _app(root, workspace, tmp_path)
+    tree = app.transactions.table.tree
+    netflix = next(i for i, t in enumerate(app.session.transactions) if t.payee == "NETFLIX.COM")
+    tree.selection_set(str(netflix))
+    tree.focus_force()  # generated keys go to the focus window, also across earlier tests
+    root.update()
+    tree.event_generate("<Control-Key-2>")
+    root.update()
+    shown = str(root.tk.call(str(app.notebook), "select"))  # typeshed leaves select() untyped
+    assert shown == str(app.review)  # the tab switched …
+    assert not app.session.can_undo  # … and nothing was assigned
+    tree.event_generate("<Key-2>")
+    root.update()
+    assert app.session.resolutions()[netflix].category == app.session.catalog.names()[1]
+
+
+def test_budget_inputs_survive_a_refresh_but_not_undo(
+    root: tk.Tk, workspace: Workspace, tmp_path: Path
+) -> None:
+    app = _app(root, workspace, tmp_path)
+    tab = app.budgets
+    tab.refresh()
+    tab._entries["Wohnen"].insert(0, "950")
+    tab.refresh()  # e.g. another period
+    assert tab._entries["Wohnen"].get() == "950"
+    tab.save()
+    app.undo()
+    tab.refresh()
+    assert tab._entries["Wohnen"].get() == ""  # the stored state, not the old input
+    app.session.set_budgets({"Lebensmittel": Decimal(300)})  # on the categories tab
+    tab.refresh()
+    assert tab._entries["Lebensmittel"].get() == "300,00"
+
+
+def test_a_failing_finish_still_reports_and_stops_polling(
+    root: tk.Tk, workspace: Workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = Session(workspace)
+    reports: list[object] = []
+    scheduled: list[object] = []
+    running = importer.Importer(root, session, reports.append)
+
+    def broken() -> list[str]:
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(session, "missing_months", broken)
+    monkeypatch.setattr(root, "after", lambda _ms, callback: scheduled.append(callback))
+    running.busy = True
+    running._queue.put(None)
+    with pytest.raises(RuntimeError):
+        running._poll()
+    assert reports  # the summary still arrives
+    assert not running.busy
+    assert not scheduled  # and polling stopped
+
+
+def test_a_dialog_runs_modally_and_returns_its_result(root: tk.Tk) -> None:
+    dialog = PasswordDialog(root, "Passwort", "Bitte eingeben:")
+
+    def type_and_accept() -> None:
+        assert dialog.grab_status() == "local"  # modal while it runs
+        dialog._first.insert(0, "geheim")
+        dialog.accept()
+
+    root.after(DIALOG_DELAY_MS, type_and_accept)
+    assert dialog.show() == "geheim"
+
+
+def test_categories_are_never_saved_over_a_statement(
+    root: tk.Tk, workspace: Workspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app(root, workspace, tmp_path)
+    statement = tmp_path / "umsaetze.csv"
+    statement.write_text("Datum;Betrag\n", encoding="utf-8")
+    monkeypatch.setattr(app.session, "is_statement_file", lambda path: path == statement)
+    monkeypatch.setattr(filedialog, "asksaveasfilename", lambda **_options: str(statement))
+    app.save_categories()
+    assert statement.read_text(encoding="utf-8") == "Datum;Betrag\n"
+    assert app.status_bar.cget("text") == exports.PROTECTED

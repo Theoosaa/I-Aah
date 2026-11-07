@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Final
 
 from iaah.core.category_io import load_catalog, save_catalog
-from iaah.core.errors import IaahError, StorageError, WrongPasswordError
+from iaah.core.errors import IaahError, StorageError
 from iaah.core.parsing.csv_import import import_table, load_table
 from iaah.core.storage import DataPaths, DataStore, InstanceLock
 from iaah.core.workspace import Workspace, file_sha256
@@ -39,7 +39,11 @@ MIN_SIZE: Final = (1000, 640)
 TAB_PAD: Final = "  "
 STATEMENTS: Final = [("Kontoauszüge", "*.pdf *.csv"), ("PDF", "*.pdf"), ("CSV", "*.csv")]
 CATEGORY_FILES: Final = [("Kategorien (JSON)", "*.json"), ("Kategorien (CSV)", "*.csv")]
+JSON_SUFFIX: Final = ".json"
+# Widgets with their own text editing (ttk.Combobox is a ttk.Entry; read-only ones are not).
 TEXT_FIELDS: Final = (tk.Entry, ttk.Entry, tk.Text, tk.Spinbox, ttk.Spinbox)
+READ_ONLY: Final = "readonly"
+BUSY: Final = "Bitte erst den offenen Dialog oder den laufenden Import abschließen."
 BREAK: Final = "break"  # Tk: the event is handled
 ZOOMED: Final = "zoomed"  # Tk window state "maximized" (Windows); stored instead of a size
 PDF_PATTERN: Final = "*.pdf"
@@ -262,7 +266,7 @@ class App:
             widget = event.widget
             if not isinstance(widget, tk.Misc) or widget.winfo_toplevel() is not self.root:
                 return None
-            if not in_text_fields and isinstance(widget, TEXT_FIELDS):
+            if not in_text_fields and _edits_text(widget):
                 return None
             action()
             return BREAK
@@ -330,6 +334,7 @@ class App:
             summary.record(
                 path.name, parsed, self._session.import_parsed(parsed, path, file_sha256(path))
             )
+            summary.missing_months = self._session.missing_months()
             self._import_done(summary)
 
         self.run(run_import)
@@ -412,10 +417,15 @@ class App:
         chosen = filedialog.asksaveasfilename(
             parent=self.root,
             title="Kategorien speichern",
-            defaultextension=".json",
+            defaultextension=JSON_SUFFIX,
             filetypes=CATEGORY_FILES,
         )
-        if chosen and self.run(lambda: save_catalog(self._session.catalog, Path(chosen))):
+        if not chosen:
+            return
+        if self._session.is_statement_file(Path(chosen)):
+            self.status(exports.PROTECTED)
+            return
+        if self.run(lambda: save_catalog(self._session.catalog, Path(chosen))):
             self.status(f"Kategorien gespeichert: {chosen}")
 
     def toggle_dark(self) -> None:
@@ -460,10 +470,7 @@ class App:
             return False
         try:
             self._session.verify_password(password)
-        except WrongPasswordError as error:
-            messagebox.showerror(APP_TITLE, error_message(error), parent=self.root)
-            return False
-        except StorageError as error:
+        except StorageError as error:  # among them WrongPasswordError
             messagebox.showerror(APP_TITLE, error_message(error), parent=self.root)
             return False
         return True
@@ -504,7 +511,11 @@ class App:
         webbrowser.open(self._store.paths.root.as_uri())
 
     def quit(self) -> None:
-        """Remember window and view, then close."""
+        """Remember window and view, then close – not while a modal dialog or an import still
+        works with the window."""
+        if self.importer.busy or self.root.grab_current() is not None:
+            self.status(BUSY)
+            return
         zoomed = self.root.state() == ZOOMED
         state = {
             UI_GEOMETRY: ZOOMED if zoomed else self.root.geometry(),
@@ -518,6 +529,13 @@ class App:
         except (StorageError, ValueError):
             logging.getLogger(__name__).warning("could not save the window state")
         self.root.destroy()
+
+
+def _edits_text(widget: tk.Misc) -> bool:
+    """Whether ``widget`` is a field the user types into."""
+    if isinstance(widget, ttk.Combobox):
+        return not widget.instate([READ_ONLY])
+    return isinstance(widget, TEXT_FIELDS)
 
 
 def main() -> None:
@@ -547,6 +565,6 @@ def _run(root: tk.Tk, store: DataStore) -> None:
         return
     app = App(root, store, workspace)
     root.deiconify()
-    offer_migration(root, app.session, Path.cwd())
-    app.changed()
+    if offer_migration(root, app.session, Path.cwd()):
+        app.changed()
     root.mainloop()

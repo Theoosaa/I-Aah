@@ -29,13 +29,13 @@ from iaah.gui.viewmodel import (
     periods,
     view_totals,
 )
-from iaah.gui.widgets import CategoryButtons, ColumnSpec, ScrolledTree
+from iaah.gui.widgets import CategoryButtons, ColumnSpec, ScrolledTree, bind_digits
 
 ALL: Final = "Alle"
 ALL_TIME: Final = "Gesamt"
 COLUMNS: Final = (
     ColumnSpec(Column.DATE, "Datum", 80),
-    ColumnSpec(Column.TYPE, "Buchungsart", 95),
+    ColumnSpec(Column.TYPE, "Buchungsart", 82),
     ColumnSpec(Column.PAYEE, "Empfänger", 130, stretch=True),
     ColumnSpec(Column.PURPOSE, "Verwendungszweck", 140, stretch=True),
     ColumnSpec(Column.AMOUNT, "Betrag", 95, "e"),
@@ -51,7 +51,6 @@ ROW_GAP: Final = 1
 SEARCH_WIDTH: Final = 24
 AMOUNT_WIDTH: Final = 8
 COMBO_WIDTH: Final = 18
-DIGITS: Final = "123456789"
 DONE: Final = "Alles zugeordnet – keine offene Buchung mehr. 🎉"
 EMPTY: Final = "Noch keine Buchungen – Datei ▸ Kontoauszüge importieren (Strg+O)."
 NO_SELECTION: Final = "Keine Buchung ausgewählt."
@@ -70,6 +69,7 @@ class TransactionsTab(ttk.Frame):
         self.host = host
         self._periods: list[Period] = []
         self._pending: str | None = None  # scheduled filter run while typing
+        self._menu: tk.Menu | None = None  # the context menu last shown
         self._build_filters()
         self._build_table()
         self._build_panel()
@@ -125,8 +125,7 @@ class TransactionsTab(ttk.Frame):
         tree.bind("<<TreeviewSelect>>", lambda _event: self._on_select())
         tree.bind("<Double-1>", lambda _event: self._open_in_review())
         tree.bind("<Button-3>", self._context_menu)
-        for digit in DIGITS:
-            tree.bind(digit, partial(self._on_digit, int(digit)))
+        bind_digits(tree, self._assign_number)
 
     def _build_panel(self) -> None:
         panel = ttk.Frame(self, width=PANEL_WIDTH, padding=(PAD_LARGE, 0, 0, 0))
@@ -286,9 +285,6 @@ class TransactionsTab(ttk.Frame):
         if self.host.session.selection:
             self.host.run(lambda: self.host.session.assign(category))
 
-    def _on_digit(self, number: int, _event: object) -> None:
-        self._assign_number(number)
-
     def _assign_number(self, number: int) -> None:
         names = self.host.session.catalog.names()
         if number <= len(names):
@@ -345,7 +341,9 @@ class TransactionsTab(ttk.Frame):
         if iid and iid not in self.table.selected():
             self.table.tree.selection_set(iid)
             self._on_select()
-        menu = tk.Menu(self, tearoff=False)
+        if self._menu is not None:
+            self._menu.destroy()  # one menu at a time – built afresh for the current categories
+        menu = self._menu = tk.Menu(self, tearoff=False)
         categories = tk.Menu(menu, tearoff=False)
         for name in self.host.session.catalog.names():
             categories.add_command(label=name, command=partial(self.assign, name))

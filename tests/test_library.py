@@ -32,7 +32,20 @@ def test_same_file_is_skipped_as_a_whole() -> None:
     library.add(_parsed(_txn("Kaffee")), sha256="a")
     result = library.add(_parsed(_txn("Kaffee")), sha256="a")
     assert result.already_imported
+    assert not result.relocated
     assert len(library.statements) == 1
+
+
+def test_a_moved_file_keeps_its_bookings_and_gets_its_new_location() -> None:
+    library = Library()
+    library.add(_parsed(_txn("Kaffee")), "C:/alt/juli.pdf", sha256="a")
+    again = library.add(_parsed(_txn("Kaffee")), "C:/alt/juli.pdf", sha256="a")
+    moved = library.add(_parsed(_txn("Kaffee")), "D:/neu/juli.pdf", sha256="a")
+    assert not again.relocated
+    assert moved.already_imported and moved.relocated
+    assert [s.path for s in library.statements] == ["D:/neu/juli.pdf"]
+    assert len(library.transactions) == 1
+    assert not library.relocate("unbekannt", "D:/x.pdf")
 
 
 def test_overlapping_export_adds_only_what_is_new() -> None:

@@ -12,7 +12,13 @@ from iaah.gui.host import Host
 from iaah.gui.tabs.transactions import period_label
 from iaah.gui.texts import APP_TITLE
 from iaah.gui.theme import FONT_BOLD, PAD, PAD_LARGE, Palette
-from iaah.gui.viewmodel import BudgetRow, budget_from_text, budget_rows, periods
+from iaah.gui.viewmodel import (
+    BudgetRow,
+    budget_from_text,
+    budget_rows,
+    periods,
+    unsaved_budgets,
+)
 
 INTRO: Final = (
     "Monatsbudget je Ausgabe-Kategorie. Leer oder 0 entfernt ein Budget. Daneben steht, was im "
@@ -39,6 +45,7 @@ class BudgetsTab(ttk.Frame):
         self.host = host
         self._periods: list[Period] = [Period.all_time()]
         self._entries: dict[str, ttk.Entry] = {}
+        self._shown: dict[str, str] = {}  # what each entry showed after the last refresh
         ttk.Label(self, text=INTRO, wraplength=WRAP, justify="left").pack(anchor="w")
         bar = ttk.Frame(self)
         bar.pack(anchor="w", pady=PAD)
@@ -59,7 +66,8 @@ class BudgetsTab(ttk.Frame):
         self.period.current(self._periods.index(chosen) if chosen in self._periods else 0)
         session = self.host.session
         rows = budget_rows(session.entries(), session.catalog, self._periods[self.period.current()])
-        typed = self._typed(rows)
+        stored = {row.category: row.budget for row in rows}
+        typed = unsaved_budgets(self._shown, self._inputs(), stored)
         for child in self.grid_frame.winfo_children():
             child.destroy()
         for column, heading in enumerate(HEADINGS):
@@ -72,15 +80,10 @@ class BudgetsTab(ttk.Frame):
         for name, text in typed.items():
             if name in self._entries:
                 _replace(self._entries[name], text)
+        self._shown = self._inputs()
 
-    def _typed(self, rows: list[BudgetRow]) -> dict[str, str]:
-        """Entries the user changed but did not save yet – they survive a refresh."""
-        stored = {row.category: _budget_text(row.budget) for row in rows}
-        return {
-            name: entry.get()
-            for name, entry in self._entries.items()
-            if entry.winfo_exists() and entry.get().strip() != stored.get(name, "")
-        }
+    def _inputs(self) -> dict[str, str]:
+        return {name: entry.get() for name, entry in self._entries.items() if entry.winfo_exists()}
 
     def _row(self, line: int, row: BudgetRow) -> ttk.Entry:
         tk.Frame(self.grid_frame, width=SWATCH, height=SWATCH, bg=row.color).grid(

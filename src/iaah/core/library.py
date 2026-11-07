@@ -1,7 +1,8 @@
 """The library: every imported statement, its bookings and the user's manual decisions.
 
 Importing never adds a booking twice. A file already imported (same SHA-256) is skipped as a
-whole; otherwise bookings are de-duplicated as a multiset of ``Transaction.key`` – two
+whole – only its new location is remembered, so the PDF view finds a moved statement again;
+otherwise bookings are de-duplicated as a multiset of ``Transaction.key`` – two
 identical coffees on one day stay two, an overlapping CSV export adds nothing twice. A
 duplicate that brings a PDF placement replaces a stored booking without one ("enriched"):
 that is how bookings migrated from the legacy app gain their position in the PDF and the
@@ -10,7 +11,7 @@ clean purpose text of the new parser.
 
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from iaah.core.assignments import ManualAssignments
 from iaah.core.models import StatementInfo, Transaction
@@ -34,6 +35,7 @@ class ImportResult:
     duplicates: int
     enriched: int
     already_imported: bool = False
+    relocated: bool = False  # already imported, but from somewhere else: new location stored
 
 
 @dataclass(slots=True)
@@ -53,10 +55,20 @@ class Library:
     ) -> ImportResult:
         """Import a parsed statement (see module docstring for de-duplication)."""
         if sha256 is not None and self.knows(sha256):
-            return ImportResult(0, len(parsed.transactions), 0, already_imported=True)
+            relocated = path is not None and self.relocate(sha256, path)
+            duplicates = len(parsed.transactions)
+            return ImportResult(0, duplicates, 0, already_imported=True, relocated=relocated)
         result = self._merge(parsed.transactions)
         self._upsert_statement(StoredStatement(parsed.info, path, sha256))
         return result
+
+    def relocate(self, sha256: str, path: str) -> bool:
+        """Remember where a known file lies now; ``True`` if its stored location changed."""
+        for index, stored in enumerate(self.statements):
+            if stored.sha256 == sha256 and stored.path != path:
+                self.statements[index] = replace(stored, path=path)
+                return True
+        return False
 
     def months(self) -> list[str]:
         """Months with bookings, sorted."""

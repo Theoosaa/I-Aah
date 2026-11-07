@@ -20,7 +20,7 @@ minimum size 1000×640 checked.
 | 4 | med | App-wide shortcuts fired inside modal dialogs and entry fields (Ctrl+Z in the password dialog undid an assignment, Ctrl+O opened the import). | **Fixed.** `App._shortcut` ignores events from other toplevels; Ctrl+Z/Ctrl+Y leave entry and text fields their own undo. |
 | 5 | med | Live filters cost 270–425 ms per key with 5 000 bookings (every key release rebuilt options and buttons and resolved all bookings). | **Fixed.** Filters wait 150 ms after the last key and refresh only the table; resolutions are cached until the data changes; cheap filters run before the costly ones. |
 | 6 | med | The analysis tab drew every chart twice. | **Fixed.** `draw_idle()`; the caption wraps on `<Configure>` instead of a fixed width. |
-| 7 | med | Betrag and Kategorie were invisible at 1000×640 (850 px of columns in ~530 px, no horizontal scrollbar). | **Fixed.** Narrower base widths with `minwidth`, side panel 330 px, horizontal scrollbar. At 1000×640 Betrag is visible and Kategorie is one scroll away (the row tint and the side panel show it too); at the default 1250×780 all columns fit. |
+| 7 | med | Betrag and Kategorie were invisible at 1000×640 (850 px of columns in ~530 px, no horizontal scrollbar). | **Fixed.** Narrower base widths, side panel 330 px, horizontal scrollbar. At 1000×640 Betrag is visible (after the second round: ends at 529 of 531 px) and Kategorie is one scroll away (the row tint and the side panel show it too); at the default 1250×780 all columns fit. |
 | 8 | low | The review tab kept the statement PDF open (Windows could not move or delete it). | **Fixed.** pdfplumber reads the file from memory (`BytesIO`). |
 | 9 | low | The budgets tab dropped typed values on refresh or undo. | **Fixed.** Typed but unsaved values survive a refresh. |
 | 10 | low | Ctrl+Z with nothing to undo said "Rückgängig gemacht." and refreshed everything. | **Fixed.** Reports "Nichts rückgängig zu machen." / "Nichts zu wiederholen." and refreshes nothing. |
@@ -40,9 +40,32 @@ follows rename/removal, suggestions only after manual decisions, split totals, r
 budget text, export target guard, `start_over` without files and read-only, unreadable data file
 is no damage.
 
-Still open (for the second round): start-up flows with patched dialogs, undo across
-rename/remove/recolor/kind and `UNDO_LIMIT`, `error_message` texts, `exports._filtered_entries`.
+Left open after the first round and closed in the second: start-up flows with patched dialogs,
+undo across rename/remove/recolor/kind and `UNDO_LIMIT`, `error_message` texts,
+`exports._filtered_entries`.
 
 ## Second round
 
-Pending.
+The reviewer verified the rows above with probes on synthetic data: 1, 2, 5, 6, 8, 10, 12–14
+and 19 hold; 3, 4, 7, 9, 11, 15–18 hold with the remarks below. One high and one medium finding
+came from the revision itself. After revision: 682 tests green, 5 skipped, ruff/format/mypy
+clean; the Tk smoke tests pass three times in a row.
+
+| # | Sev. | Finding | Disposition |
+|---|---|---|---|
+| 20 | high | Ctrl+1…5 switched the tab **and** assigned the selected bookings: Tk lets a plain `"2"` binding match Ctrl+2, and the widget binding runs before the app-wide one. | **Fixed.** `widgets.bind_digits` binds 1–9 for the table, the review canvas and the review list and ignores events with Ctrl held. Smoke test generates Ctrl+2 (tab switches, nothing assigned) and 2 (assigns). |
+| 21 | med | Budgets tab (row 9 revisited): an input counted as typed whenever it differed from the *new* stored value, so undo and budgets set on the categories tab were hidden – and saved back. | **Fixed.** The tab remembers what each entry showed at the last refresh; `viewmodel.unsaved_budgets` keeps only inputs changed since then and not equal to the stored budget. Unit test plus smoke test (type, refresh, save, undo, change elsewhere). |
+| 22 | low | A failing `_finish` left the importer polling forever and skipped the summary. | **Fixed.** `_poll` finishes once the end marker is taken; `_finish` calls `on_done` in `finally`. Smoke test with a failing step. |
+| 23 | low | Exports under a category filter contained the other split parts (row 15 revisited). | **Fixed.** `_filtered_entries` keeps only the filtered category's entries, as the status line. Test added. |
+| 24 | low | *Kategorien speichern unter…* could overwrite an imported CSV statement (row 17 revisited). | **Fixed.** Same guard as the exports. Smoke test. |
+| 25 | low | Betrag clipped by ~11 px at 1000×640; the disposition of row 7 mentioned a `minwidth` that does not exist. | **Fixed.** Buchungsart 95 → 82 px; row 7 corrected. |
+| 26 | low (uncertain) | Closing the main window while a CSV-mapping dialog is open could destroy widgets the import still uses. | **Fixed defensively.** `App.quit` refuses while an import runs or a modal dialog holds the grab, with a status note. |
+| 27 | nit | Context menu leaked a `tk.Menu` per right-click; Ctrl+Z ignored on read-only comboboxes; `DataUnreadableError` text spoke of a lock only; English `OSError` text in the review tab; unused loop variable; duplicate `except` branches; the visible tab built twice at start; 30-line `show_entries`; no missing months after the menu's CSV import; mypy override for all of `iaah.gui`; undoing a rename clears the filter instead of restoring it; design note still said damaged copies are shown only if present. | **Fixed:** the last menu is destroyed before a new one; read-only comboboxes do not count as text fields; message names lock, permissions or a non-file; German text with the path; loop over `KIND_NAMES`; one `except StorageError`; the start refreshes again only after a migration; columns and cells extracted; missing months reported; override limited to the Tk modules. **Accepted:** the filter is view state, not data – clearing it after an undone rename is safe and visible. Design note corrected. |
+| 28 | — | Own finding while writing the README: a statement imported before but now in another folder was skipped as "already imported" with its old path, so the PDF review could not find it any more. | **Fixed.** `Library.relocate` (core) stores the new location for a known hash; `Workspace.import_file`, `Library.add` and the GUI importer use it, the summary lists "Bereits importiert, neuer Speicherort übernommen". Tests in core and session. |
+
+Test gaps closed: `tests/test_gui_startup.py` (password wrong/right/cancel, newer and unreadable
+data, damaged with "Nein"/"Ja", recovery report, start-up and menu migration gates – all with
+scripted dialogs, files compared byte for byte), undo across every category change and
+`UNDO_LIMIT`, a failed save keeps the undo step, `error_message`, filtered exports, unsaved budget
+inputs, the real `Dialog.show()` with grab, key routing, importer failure path, category-save
+guard, relocated statements.

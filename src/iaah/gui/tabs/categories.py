@@ -115,13 +115,9 @@ class CategoriesTab(ttk.Frame):
         self.kind = tk.StringVar()
         self._kind_buttons = [
             ttk.Radiobutton(
-                frame,
-                text=KIND_NAMES[kind],
-                value=kind.value,
-                variable=self.kind,
-                command=self._set_kind,
+                frame, text=name, value=kind.value, variable=self.kind, command=self._set_kind
             )
-            for kind, label in KIND_LABELS.items()
+            for kind, name in KIND_NAMES.items()
         ]
         for button in self._kind_buttons:
             button.pack(side="left", padx=(0, PAD))

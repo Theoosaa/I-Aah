@@ -38,8 +38,8 @@ MESSAGES: Final[tuple[tuple[type[IaahError], str], ...]] = (
     (UnsupportedVersionError, "Die Daten stammen aus einer neueren I-Aah-Version."),
     (
         DataUnreadableError,
-        "Die Daten können gerade nicht gelesen werden (von einem anderen Programm gesperrt?). "
-        "Bitte später erneut starten – sie bleiben unverändert.",
+        "Die Datendatei lässt sich nicht lesen (gesperrt, ohne Zugriffsrechte oder keine "
+        "normale Datei). Sie bleibt unverändert – bitte den Datenordner prüfen.",
     ),
     (StorageError, "Die Daten konnten nicht gelesen oder gespeichert werden."),
     (StatementParseError, "Die Datei konnte nicht als Kontoauszug gelesen werden."),

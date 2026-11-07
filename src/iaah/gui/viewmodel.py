@@ -5,7 +5,7 @@ Everything here is a pure function of the workspace and plain values, so it is t
 display; widgets only put the prepared strings on screen.
 """
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -357,6 +357,26 @@ def budget_from_text(text: str) -> Decimal | None:
     if amount is None or amount < 0:
         raise ValueError(f"not a budget: {text!r}")
     return amount or None
+
+
+def unsaved_budgets(
+    shown: Mapping[str, str], current: Mapping[str, str], stored: Mapping[str, Decimal | None]
+) -> dict[str, str]:
+    """Budget inputs typed since the tab last showed them and not stored yet – they survive the
+    next refresh. Everything else shows the stored budget again, so undo and changes made on
+    the categories tab are never hidden behind an old input."""
+    return {
+        name: text
+        for name, text in current.items()
+        if text.strip() != shown.get(name, "").strip() and not _is_stored(text, stored.get(name))
+    }
+
+
+def _is_stored(text: str, budget: Decimal | None) -> bool:
+    try:
+        return budget_from_text(text) == budget
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True, slots=True)

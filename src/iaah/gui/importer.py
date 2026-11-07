@@ -87,22 +87,25 @@ class Importer:
 
     def _poll(self) -> None:
         """Apply what the worker delivered; poll again until its end marker arrived – also if
-        applying one file failed unexpectedly, so the import always ends."""
-        finished = False
+        applying one file failed unexpectedly. Once the marker is taken the import finishes,
+        whatever happens, and polling stops."""
+        ended = False
         try:
-            finished = self._drain()
+            ended = self._drain()
         finally:
-            if not finished:
+            if ended:
+                self._finish()
+            else:
                 self._root.after(POLL_MS, self._poll)
 
     def _drain(self) -> bool:
+        """Apply queued outcomes; ``True`` once the end marker was taken."""
         while True:
             try:
                 outcome = self._queue.get_nowait()
             except queue.Empty:
                 return False
             if outcome is None:
-                self._finish()
                 return True
             self._apply(outcome)
 
@@ -120,7 +123,16 @@ class Importer:
         elif outcome.parsed is not None:
             self._import(outcome.path, outcome.parsed, outcome.sha256)
         else:  # the hash was known before the import started
-            self._summary.already_imported.append(name)
+            self._known(outcome.path, outcome.sha256)
+
+    def _known(self, path: Path, sha256: str) -> None:
+        """A file imported before: only its location may have changed."""
+        try:
+            moved = self._session.relocate(path, sha256)
+        except IaahError as error:  # stored in memory, but saving failed
+            self._summary.failed.append((path.name, error_message(error)))
+            return
+        self._summary.known(path.name, moved)
 
     def _import(self, path: Path, parsed: ParsedStatement, sha256: str) -> None:
         try:
@@ -131,8 +143,8 @@ class Importer:
         self._summary.record(path.name, parsed, result)
 
     def _finish(self) -> None:
-        """Close the progress window, ask about CSV files, report – and be ready again even if
-        one of these steps fails."""
+        """Close the progress window, ask about CSV files, report – and be ready again and
+        report even if one of these steps fails."""
         try:
             if self._progress is not None and self._progress.winfo_exists():
                 self._progress.destroy()
@@ -142,7 +154,7 @@ class Importer:
             self._summary.missing_months = self._session.missing_months()
         finally:
             self.busy = False
-        self._on_done(self._summary)
+            self._on_done(self._summary)
 
     def _ask_mapping(self, outcome: _Outcome) -> None:
         try:

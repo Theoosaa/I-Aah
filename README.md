@@ -1,147 +1,303 @@
-# Kontoanalyse
+# I-Aah – Kontoanalyse
 
-Ein Python-Programm mit Oberfläche, das **ING-DiBa Girokonto-Kontoauszüge (PDF)**
-einliest und deine **Ausgaben nach Kategorien** auswertet. Einmal getroffene
-Zuordnungen werden gespeichert, sodass jeder neue Monatsauszug automatisch
-kategorisiert wird. Mehrere Auszüge lassen sich gleichzeitig laden, um ein
-ganzes Jahr mit Grafiken zu analysieren.
+I-Aah liest **Kontoauszüge der ING (PDF)** und **CSV-Exporte vieler Banken** ein, ordnet jede
+Buchung über Stichwörter einer Kategorie zu und wertet deine Ausgaben über Monate und Jahre aus.
+Alles, was du einmal zuordnest, gilt auch für künftige Auszüge. Die Daten bleiben auf deinem
+Rechner – auf Wunsch verschlüsselt.
 
-## Neu in Version 3
+## Was das Programm kann
 
-- **Markiertes Konto-PDF:** *Datei → Exportieren → Markiertes Konto-PDF…* legt
-  hinter jede Buchung im **Original-Auszug** einen halbtransparenten Farbbalken
-  in der Farbe ihrer Kategorie (Haupt- **und** Verwendungszweck-Zeilen als ein
-  Block) und hängt eine Farb-Legende an. Kategorien kommen aus deinen Regeln
-  und manuellen Zuordnungen. Benötigt `pypdf` + `reportlab`.
-- **Neue Diagramme:** Geldfluss-**Sankey** (Einnahmen → Kategorien), **Kalender-
-  Heatmap** der Tagesausgaben, **Jahresvergleich** (Ausgaben je Monat pro Jahr).
-- **Dark Mode** (Menü *Ansicht*), Einstellung wird gemerkt.
-- **Hintergrund-Import mit Fortschrittsbalken** – die Oberfläche friert bei vielen
-  PDFs nicht mehr ein.
-- **CSV-Import** vieler Banken (ING, Sparkasse, DKB …) mit Auto-Erkennung und
-  manueller Spaltenzuordnung (Menü *Datei → CSV importieren*).
-- **Passwortschutz:** `data.json` kann verschlüsselt werden (Menü *Datenschutz*;
-  benötigt `cryptography`).
-- **`.exe`-Bau** per `build_exe.bat` (PyInstaller) – Weitergabe ohne Python.
+- **Import:** ING-Girokonto-PDFs (auch viele auf einmal, ganze Ordner) und CSV-Dateien mit
+  automatischer oder eigener Spaltenzuordnung. Doppelte Buchungen werden erkannt, der
+  Saldo jedes Auszugs wird nachgerechnet.
+- **Zuordnen:** Kategorien bestehen aus Stichwortlisten. Was kein Stichwort trifft, landet in
+  einer Auffang-Kategorie und gilt als *offen*. Zuordnen per farbigem Knopf, Tasten 1–9 oder
+  Rechtsklick; Buchungen lassen sich auf mehrere Kategorien aufteilen; alles ist rückgängig
+  zu machen.
+- **Stichwort-Vorschläge:** Nach einer Zuordnung von Hand schlägt das Programm Stichwörter vor
+  und zeigt vorher, wie viele andere Buchungen sie träfen. Regeln entstehen nie heimlich.
+- **PDF-Prüfung:** der Original-Auszug mit farbig markierten Buchungen – so siehst du, ob alles
+  erkannt wurde und welche Zeilen nicht als Buchung zählen.
+- **Auswertung:** 13 Diagramme, Kennzahlen mit Vergleich zur Vorperiode, Klick auf ein Segment
+  zeigt die Buchungen dahinter.
+- **Budgets** je Kategorie mit Ampel.
+- **Export:** Buchungen als CSV/Excel, Zusammenfassung als CSV/Text, markiertes Auszug-PDF,
+  PDF-Report.
+- **Dunkles Design**, **Passwortschutz**, **Kommandozeile** (`iaah-cli`).
 
-## Neu in Version 2
+## Installation
 
-- **Budgets je Kategorie** mit Ampel (grün/gelb/rot) – eigener Tab „Budgets“ +
-  Diagramm „Budget-Ampel“.
-- **Echter Kontostand-Verlauf** aus dem Auszug (Alter/Neuer Saldo) inkl.
-  automatischem **Saldo-Abgleich** beim Import.
-- **Abo-/Fixkosten-Erkennung** mit Monats- **und Jahreskosten** und nächstem
-  voraussichtlichen Buchungsdatum.
-- **Drill-down:** Klick auf ein Diagramm-Segment zeigt die zugehörigen Buchungen.
-- **Buchung aufteilen** (ein Betrag auf mehrere Kategorien), **interne
-  Umbuchungen** ausschließen (zählen nicht als Ausgabe/Einnahme),
-  **Rückerstattungen** mindern die Kategorieausgabe statt als Einkommen zu zählen.
-- **Bessere Regeln:** spezifischste Regel gewinnt, optional **Regex** und
-  **Betragsgrenzen**.
-- **Schnell-Zuordnen:** „Nächste offene ▶“, Zifferntasten **1–9**, **Undo (Strg+Z)**,
-  Kategorie direkt in der Tabelle per Doppelklick ändern.
-- **Filter** nach Konto, Betrag (von–bis) und Typ (Ein-/Ausgaben).
-- **Export:** CSV, Excel (mit `openpyxl`) und **PDF-Report**.
-- **Mehrkonten:** Konto/IBAN werden erkannt und sind filterbar.
-- **Robustheit:** atomare Schreibvorgänge mit `.bak`-Backup; Fenstergröße und
-  letzte Filter werden gemerkt.
+Voraussetzung: **Python 3.12 oder neuer** (entwickelt mit 3.14). Unter Linux zusätzlich Tk:
+`sudo apt install python3-tk`.
 
-## Installation (einmalig)
+Im Ordner des Programms (Windows, PowerShell):
 
-```bash
-pip install -r requirements.txt
+```powershell
+py -3.14 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e .
 ```
+
+Unter Linux/macOS heißt die zweite Zeile `source .venv/bin/activate`.
 
 ## Starten
 
-Doppelklick auf **`Start.bat`** – oder:
-
-```bash
-python kontoanalyse.py
+```powershell
+iaah
 ```
 
-## Bedienung
+(bei aktivierter Umgebung, sonst `.venv\Scripts\iaah.exe` – die Datei kannst du auch per
+Doppelklick oder über eine Desktop-Verknüpfung starten). Alternativ: `python -m iaah`.
 
-**1. Auszüge laden**
-- „PDF(s) laden“ – ein oder mehrere Kontoauszüge auswählen (Strg/Shift = Mehrfachauswahl).
-- „Ordner laden“ – alle PDFs eines Ordners auf einmal (z. B. ein ganzes Jahr).
-- Doppelt geladene Buchungen werden automatisch erkannt und nicht doppelt gezählt.
-- **Buchungen bleiben gespeichert** (in `data.json`) und werden beim nächsten Start
-  automatisch geladen. Du musst also **nicht jedes Mal alle PDFs neu einlesen** –
-  jeden Monat einfach nur den neuen Auszug per „PDF(s) laden“ hinzufügen. Zum
-  kompletten Neuaufbau: Menü *Datei → Geladene Auszüge zurücksetzen*.
+Ohne Python geht es mit der fertigen `I-Aah.exe` (siehe [Windows-Programm bauen](#windows-programm-bauen)).
 
-**2. Tab „Transaktionen“**
-- Alle Buchungen in einer Tabelle, farblich nach Kategorie.
-- Oben filtern nach **Monat**, **Kategorie** und **Suchtext**; Spalten durch Klick sortierbar.
-- Zuordnen:
-  - Eine oder mehrere Zeilen markieren → unten Kategorie wählen → **„Zuordnen“**
-    (oder Doppelklick / Rechtsklick → „Kategorie zuweisen“).
-  - Ist **„Als Regel merken (Empfänger)“** aktiv, merkt sich das Programm den
-    Empfänger. Der gleiche Empfänger wird künftig – auch in neuen Auszügen –
-    automatisch dieser Kategorie zugeordnet.
+## Erste Schritte
 
-**3. Tab „Auswertung“**
+1. **Datei → Kontoauszüge importieren (PDF, CSV)…** (Strg+O) und einen oder mehrere Auszüge
+   wählen. Mehrere Dateien werden im Hintergrund gelesen; am Ende fasst eine Meldung zusammen,
+   was neu war, was schon bekannt war und welche Monate in der Reihe fehlen.
+2. Im Tab **Transaktionen** mit **Nächste offene ▶** (F3) durch die Buchungen gehen, die noch
+   kein Stichwort getroffen hat, und sie per Knopf oder Taste 1–9 zuordnen.
+3. Unter **Stichwort vorschlagen** ein passendes Stichwort **übernehmen** – dann wird der
+   Empfänger künftig automatisch erkannt.
+4. Im Tab **Auswertung** Zeitraum und Diagramm wählen.
 
-Ganz oben **Kennzahlen-Kacheln** mit Vergleich zur Vorperiode (▲▼):
-Einnahmen · Ausgaben · Netto gespart · **Sparquote** · Ø Ausgaben/Monat.
-Wählst du einen einzelnen Monat, wird automatisch mit dem Vormonat verglichen;
-ein Jahr wird mit dem Vorjahr verglichen.
+Jeden Monat genügt es, den neuen Auszug zu importieren – alles Bisherige bleibt gespeichert.
 
-Darunter das gewählte Diagramm – jedes mit einer **Erklärzeile (ⓘ)**, die sagt,
-was es aussagt und über welchen Zeitraum:
+## Die Tabs
 
-- **Überblick: Cashflow & Sparquote** – grün Einnahmen, rot Ausgaben, blaue Linie
-  = was übrig bleibt, %-Zahl = Sparquote. Die Startansicht.
-- **Ausgaben nach Kategorie** – Ring mit Gesamtsumme in der Mitte.
-- **Kategorie-Vergleich zur Vorperiode** – farbig = aktuell, grau = Vorperiode;
-  zeigt sofort, wo es teurer/günstiger wurde.
-- **Kategorie-Entwicklung über Zeit** – Top-5-Kategorien als Linien über Monate.
-- **Ausgaben je Kategorie je Monat (gestapelt)** – Monatssummen nach Kategorie.
-- **Fixkosten vs. variabel (Abos erkennen)** – trennt wiederkehrende Zahlungen
-  (Miete, Abos, Versicherungen) von variablen Ausgaben und listet erkannte Abos
-  mit monatlichem Betrag. Braucht ≥ 2 geladene Monate.
-- **Top-Empfänger** – größte Kostenverursacher.
-- **Saldo-Verlauf** – kumulierte Entwicklung.
+### Transaktionen
 
-Zeitraum wählbar: **Alle · einzelnes Jahr · einzelner Monat**. Die
-Navigationsleiste erlaubt Zoomen und Speichern als Bild.
+- **Filter:** Zeitraum, Kategorie, Suche (Empfänger, Verwendungszweck, Buchungsart), Konto,
+  Typ (Ausgaben/Einnahmen), Betrag von … bis … (ohne Vorzeichen), *nur offene*.
+  **Filter zurücksetzen** stellt alles zurück.
+- **Tabelle:** Klick auf eine Spaltenüberschrift sortiert (▲/▼), die Zeilenfarbe ist die
+  Farbe der Kategorie. Das Zeichen vor der Kategorie sagt, wie sie zustande kam:
 
-**4. Tab „Kategorien & Regeln“**
-- Eigene Kategorien anlegen, umfärben, löschen.
-- Regeln (Stichwort → Kategorie) direkt bearbeiten. Ein Stichwort greift, wenn es
-  im Empfänger oder Verwendungszweck vorkommt (Groß-/Kleinschreibung egal).
+  | Zeichen | Bedeutung |
+  |---|---|
+  | (keins) | ein Stichwort hat getroffen |
+  | `?` | offen – kein Stichwort, Auffang-Kategorie *Sonstiges* bzw. *Einkommen* |
+  | `✎` | von Hand zugeordnet |
+  | `÷` | aufgeteilt auf mehrere Kategorien |
 
-## Wo wird gespeichert?
+- **Ausgewählte Buchung** (rechts): alle Texte der Buchung, die Herkunft der Kategorie und die
+  Knöpfe zum Zuordnen. Mehrere markierte Zeilen werden gemeinsam zugeordnet.
+  **Aufteilen…** verteilt den Betrag auf mehrere Kategorien, **Automatisch** nimmt eine
+  Zuordnung von Hand zurück, **+ Neue Kategorie** legt eine Kategorie an und ordnet sie gleich zu.
+- **Stichwort vorschlagen:** erscheint nach einer Zuordnung von Hand. Jeder Vorschlag nennt,
+  wie viele Buchungen er trifft und bei wie vielen er die Kategorie ändern würde.
+- **Rechtsklick:** Kategorie zuweisen, Aufteilen…, Automatisch zuordnen,
+  In der PDF-Prüfung zeigen. **Doppelklick** öffnet die Buchung in der PDF-Prüfung.
+- Die Statuszeile unten zählt die angezeigten Buchungen und ihre Summen.
 
-Alles landet in **`settings.json`** neben dem Programm:
-- `categories` – deine Kategorien + Farben
-- `rules` – gelernte/eigene Zuordnungsregeln
-- `overrides` – manuelle Zuordnungen einzelner Buchungen
+### PDF-Prüfung
 
-Die eingelesenen **Buchungen** liegen getrennt davon in `data.json` und werden
-beim Start automatisch geladen (siehe „Auszüge laden“).
+Zeigt einen importierten Auszug als Bild, jede Buchung farbig hinterlegt. Ein Klick auf eine
+Markierung wählt die Buchung; zuordnen geht auch hier mit den Knöpfen oder Tasten 1–9.
+**Vorher (nur Stichwörter) zeigen** blendet deine Zuordnungen von Hand aus. Die Liste
+**Nicht verwendete Zeilen** nennt Zeilen, die das Programm nicht zu einer Buchung gezählt hat,
+mit Grund (z. B. „neben der Buchungsspalte“, „zu weit unter der Buchung“). Ganz oben stehen
+auffällige Zeilen mit Datum und Betrag, aber ohne Buchung – dort könnte eine Buchung fehlen.
+Briefkopf und Hinweistexte erscheinen nur, wenn sie so auffällig sind.
 
-> **Datenschutz / Git:** `settings.json` (enthält u. a. echte Empfänger in den
-> Regeln/Overrides) und `data.json` (deine Buchungen) sind **persönliche Daten**
-> und gehören **nicht** ins Git-Repository. Beide sollten in `.gitignore` stehen.
+Die PDF-Prüfung braucht die Original-Datei am Ort des Imports. Hast du die PDFs verschoben,
+importiere sie am neuen Ort noch einmal – das Programm erkennt sie und merkt sich den neuen Ort.
 
-## Dateien
+### Auswertung
 
-| Datei | Zweck |
-|-------|-------|
-| `kontoanalyse.py` | Hauptprogramm mit Oberfläche |
-| `parser.py`       | PDF-Einleser (Buchungen extrahieren) |
-| `highlight.py`    | Markiertes Konto-PDF (Farbbalken + Legende) |
-| `settings.json`   | Kategorien, Regeln, Zuordnungen (persönlich – nicht committen) |
-| `data.json`       | gespeicherte Buchungen (persönlich – nicht committen) |
-| `smoke_test.py`   | Automatischer Test gegen ein echtes PDF |
-| `Start.bat`       | Bequemer Start unter Windows |
+Oben **Zeitraum** (Gesamt, ein Jahr oder ein Monat) und **Diagramm**. Die Kacheln zeigen
+Einnahmen, Ausgaben, Netto gespart, Sparquote und Ø Ausgaben je Monat, bei einem Jahr oder Monat
+mit Vergleich zur Vorperiode (▲/▼, grün = besser). Unter jedem Diagramm erklärt eine Zeile (ⓘ),
+was es zeigt; steht dort ein Klick-Tipp, öffnet ein Klick auf ein Segment die zugehörigen
+Buchungen. Die Werkzeugleiste darunter kann zoomen und das Bild speichern.
+
+Diagramme: Überblick: Cashflow & Sparquote · Ausgaben nach Kategorie · Geldfluss (Sankey) ·
+Kategorie-Vergleich zur Vorperiode · Kategorie-Entwicklung über Zeit · Ausgaben je Kategorie je
+Monat (gestapelt) · Jahresvergleich · Fixkosten vs. variabel (Abos erkennen) · Budget-Ampel ·
+Top-Empfänger · Kalender-Heatmap · Echter Kontostand · Saldo-Verlauf (relativ).
+
+Kategorien der Art *Ignoriert* (z. B. Umbuchungen aufs eigene Sparkonto) zählen in keiner
+Auswertung mit. Erstattungen mindern die Ausgaben ihrer Kategorie.
+
+### Budgets
+
+Ein Monatsbudget je Ausgaben-Kategorie, daneben der Ø-Ist-Wert je Monat im gewählten Zeitraum.
+Leer oder 0 bedeutet: kein Budget. **Budgets speichern** übernimmt alle Eingaben auf einmal.
+Die Ampel steht im Diagramm *Budget-Ampel* (bis 80 % grün, bis 100 % gelb, darüber rot).
+
+### Kategorien
+
+Links die Liste (▲/▼ ändert die Reihenfolge – sie bestimmt die Tasten 1–9), rechts die
+gewählte Kategorie: Name, **Farbe…**, **Art** (Ausgabe, Einnahme, Ignoriert), Monatsbudget und
+die **Stichwörter** (Hinzufügen, Ändern, Entfernen). **Löschen** nennt vorher, wie viele
+Zuordnungen von Hand an der Kategorie hängen. *Sonstiges* und *Einkommen* sind die
+Auffang-Kategorien und lassen sich nicht löschen.
+
+## Menüs
+
+**Datei**
+- *Kontoauszüge importieren (PDF, CSV)…* – eine oder mehrere Dateien.
+- *Alle PDFs eines Ordners importieren…* – alle PDFs direkt im Ordner (ohne Unterordner).
+- *CSV mit eigener Spaltenzuordnung…* – wenn die automatische Erkennung danebenliegt: Kopfzeile,
+  Datum, Betrag, Empfänger und Verwendungszweck selbst wählen, mit Vorschau.
+- *Exportieren*
+  - *Buchungen (gefiltert) als CSV…* – die im Tab *Transaktionen* angezeigten Buchungen,
+    `;`-getrennt, Dezimalkomma (öffnet direkt in Excel); eine aufgeteilte Buchung ergibt eine
+    Zeile je Teil.
+  - *Buchungen (gefiltert) als Excel…* – dasselbe als `.xlsx`.
+  - *Zusammenfassung je Kategorie als CSV…* / *als Text…* – Ausgaben und Einnahmen je
+    Kategorie, ebenfalls für die angezeigten Buchungen.
+  - *Markiertes Kontoauszug-PDF…* – der Original-Auszug mit farbigen Balken hinter jeder
+    Buchung und einer Legende.
+  - *Report des Auswertungs-Zeitraums als PDF…* – Deckblatt mit Kennzahlen und die wichtigsten
+    Diagramme.
+- *Alte I-Aah-Daten übernehmen…* – siehe [Umstieg von der alten Version](#umstieg-von-der-alten-version).
+- *Bibliothek leeren…* – entfernt alle importierten Auszüge und Buchungen; Kategorien und
+  Zuordnungen von Hand bleiben.
+- *Beenden*
+
+**Bearbeiten:** Rückgängig (Strg+Z) · Wiederholen (Strg+Y) · Nächste offene Buchung (F3) ·
+Auswahl automatisch zuordnen · Überflüssige manuelle Zuordnungen entfernen (solche, die
+ohnehin dasselbe Ergebnis wie die Stichwörter hätten).
+
+**Kategorien:** Neue Kategorie… · Kategorien aus Datei laden… · Kategorien speichern unter…
+(JSON oder CSV, siehe unten).
+
+**Ansicht:** Dunkles Design · die fünf Tabs (Strg+1 … Strg+5).
+
+**Datenschutz:** Passwort festlegen oder ändern… · Passwort entfernen… · Beschädigte Kopien
+löschen…
+
+**Hilfe:** Datenordner öffnen · Über I-Aah.
+
+## Tastenkürzel
+
+| Taste | Wirkung |
+|---|---|
+| Strg+O | Kontoauszüge importieren |
+| Strg+Z / Strg+Y | Rückgängig / Wiederholen für Kategorien und Zuordnungen (nicht, solange der Cursor in einem Eingabefeld steht) |
+| F3 | Nächste offene Buchung |
+| 1 … 9 | markierte Buchungen der 1. … 9. Kategorie zuordnen (Transaktionen, PDF-Prüfung) |
+| Strg+1 … Strg+5 | Tab wechseln |
+
+## Kategorien und Stichwörter
+
+- Ein Stichwort trifft, wenn es in **Empfänger oder Verwendungszweck** am Anfang eines Wortes
+  steht. Groß- und Kleinschreibung, Umlaute und Akzente spielen keine Rolle (`ä` = `ae`,
+  `ß` = `ss`).
+- Treffen mehrere Stichwörter, gewinnt das **längste** („amazon prime“ vor „amazon“).
+- Ein Stichwort gehört genau einer Kategorie; das Programm meldet Überschneidungen.
+- Stichwörter einer Einnahmen-Kategorie treffen nur Geldeingänge.
+- Ohne Treffer: Ausgaben → **Sonstiges**, Einnahmen → **Einkommen** (beides „offen“).
+- Eine Zuordnung von Hand oder eine Aufteilung hat immer Vorrang vor den Stichwörtern.
+
+**Dateiformate** für *Kategorien aus Datei laden…* und *Kategorien speichern unter…*: am
+einfachsten erzeugst du eine Vorlage mit *Kategorien speichern unter…*.
+
+- JSON: `{"version": 1, "categories": [{"name": …, "color": "#rrggbb", "kind": "expense" | "income" | "ignored", "budget": "250.00", "keywords": […]}]}`;
+  die Auffang-Kategorien tragen zusätzlich `"role": "expense_fallback"` bzw. `"income_fallback"`.
+- CSV: Spalten `name;color;kind;role;budget;keywords`, Stichwörter durch `|` getrennt.
+- Kategorie-Dateien des Projekts *budgets* (JSON oder CSV) werden ebenfalls gelesen.
+
+## Wo liegen die Daten?
+
+Nicht im Programmordner, sondern im Benutzer-Datenordner (**Hilfe → Datenordner öffnen**):
+
+- Windows: `%LOCALAPPDATA%\I-Aah`
+- Linux: `~/.local/share/I-Aah`, macOS: `~/Library/Application Support/I-Aah`
+- Anderer Ort: Umgebungsvariable `IAAH_HOME` setzen.
+
+| Datei | Inhalt |
+|---|---|
+| `library.json` | Kategorien, Stichwörter, Budgets, importierte Auszüge (mit Pfad zur PDF), Buchungen und deine Zuordnungen – mit Passwort verschlüsselt |
+| `library.json.bak` | die vorige Fassung, bei jedem Speichern erneuert |
+| `ui_state.json` | Fenstergröße, Design, Tab, Zeitraum, Diagramm – nie verschlüsselt, enthält keine Buchungsdaten |
+| `iaah.lock` | verhindert, dass das Programm zweimal läuft |
+
+Gespeichert wird nach jeder Änderung, immer zuerst in eine temporäre Datei. Ist `library.json`
+beschädigt, legt das Programm sie als `library.json.damaged-<Zeit>` beiseite und lädt die
+Sicherung; es löscht dabei nichts. Solche Kopien entfernt *Datenschutz → Beschädigte Kopien
+löschen…*.
+
+**Passwortschutz:** *Datenschutz → Passwort festlegen oder ändern…* verschlüsselt
+`library.json` und die Sicherung (AES über Fernet, Schlüssel per PBKDF2 aus dem Passwort).
+Beim Start fragt das Programm nach dem Passwort. **Ohne Passwort sind die Daten nicht zu
+retten** – merk es dir gut.
+
+## Umstieg von der alten Version
+
+Die alte I-Aah-Version (`kontoanalyse.py`) speicherte alles als `settings.json` und
+`data.json` im Programmordner. So übernimmst du die Daten:
+
+1. Neue Version starten. Startest du sie im alten Programmordner (z. B. `iaah` in einer
+   Konsole, die dort steht), bietet das Programm die Übernahme beim ersten Start gleich an;
+   sonst **Datei → Alte I-Aah-Daten übernehmen…** und den alten Programmordner wählen.
+2. War `data.json` verschlüsselt, fragt das Programm nach dem alten Passwort.
+3. Ein Bericht zeigt, was übernommen wurde: Kategorien mit Farben und Budgets, Regeln als
+   Stichwörter, Zuordnungen von Hand und Aufteilungen, Buchungen. Regex-Regeln, die sich nicht
+   in ein Stichwort übersetzen lassen, werden aufgelistet.
+
+Die alten Dateien werden nur gelesen, nie verändert. Übernommen wird nur in eine noch leere
+Bibliothek; vorhandene eigene Kategorien oder Zuordnungen werden nicht ohne Rückfrage ersetzt.
+Danach kannst du die alten Dateien archivieren oder löschen. Alte Buchungen haben keine
+Position im PDF – importiere die Auszüge einmal neu, dann erscheinen sie auch in der
+PDF-Prüfung (doppelt gezählt wird dabei nichts).
+
+## Kommandozeile
+
+`iaah-cli --help` zeigt alle Befehle. `-v` zeigt bei Fehlern Details.
+
+```powershell
+# Erkennung prüfen: Buchungen, Saldo-Abgleich, auffällige Zeilen (mit --lines jede Zeile)
+iaah-cli check Auszug.pdf
+
+# Summen je Kategorie, als Text, CSV, Diagramm und/oder PDF-Report
+iaah-cli summary Auszüge\*.pdf --period 2026 --format text csv chart report --output-dir Auswertung
+
+# … mit deinen Kategorien und Zuordnungen aus der App (nur lesend)
+iaah-cli summary --library --period 2026-07
+
+# … oder mit einer Kategorie-Datei
+iaah-cli summary Auszug.pdf --categories kategorien.json
+
+# Markiertes PDF (Standard: <Name>_markiert.pdf daneben)
+iaah-cli highlight Auszug.pdf -o markiert.pdf
+
+# Mehrere Zusammenfassungen (CSV) addieren
+iaah-cli merge januar.csv februar.csv --format text csv
+```
+
+## Windows-Programm bauen
+
+Eine eigenständige `I-Aah.exe`, die ohne Python läuft:
+
+```powershell
+pip install -e ".[build]"
+pyinstaller --noconfirm --clean --onefile --windowed --name I-Aah `
+  --paths src `
+  --collect-data iaah --copy-metadata iaah `
+  --collect-data pdfminer --collect-data reportlab `
+  --add-data "LICENSE;." --add-data "LICENSES;LICENSES" `
+  src\iaah\__main__.py
+```
+
+Das Ergebnis liegt in `dist\I-Aah.exe`. Sie nutzt denselben Datenordner wie die installierte
+Version. Der erste Start dauert einige Sekunden, weil die Datei sich entpackt.
 
 ## Hinweise
 
-- Getestet mit ING-DiBa Girokonto-Auszügen. Andere Banken haben ein anderes
-  PDF-Layout; dafür müsste `parser.py` angepasst werden.
-- Manche Umlaute sind in den ING-PDFs im Font kaputt hinterlegt; die Anzeige
-  gleicht das so gut wie möglich aus. Auf die Zuordnung hat das keinen Einfluss,
-  da sie über gleichbleibende Stichwörter läuft.
+- PDFs: getestet mit Girokonto-Auszügen der ING. Andere Banken haben ein anderes Layout –
+  für sie ist der CSV-Import da.
+- Manche ING-PDFs enthalten Umlaute in einer kaputten Schriftkodierung; die Anzeige repariert
+  die bekannten Fälle, die Zuordnung ist davon nicht betroffen.
+
+## Entwicklung
+
+Aufbau, Regeln für den Code, Tests und Werkzeuge stehen in [AGENTS.md](AGENTS.md);
+`pip install -e ".[dev]"` installiert pytest, ruff und mypy.
+
+## Lizenz
+
+MIT – siehe [LICENSE](LICENSE). Teile des Codes stammen aus dem Projekt *budgets*
+(MIT, © 2026 nikluep), siehe [LICENSES/budgets-MIT.txt](LICENSES/budgets-MIT.txt).

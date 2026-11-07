@@ -87,9 +87,13 @@ mypy_path = "src"
 files = ["src", "tests"]
 
 # typeshed leaves some tkinter methods (Notebook.select, Listbox.curselection) and matplotlib's
-# Tk backend untyped; everything of ours stays fully typed.
+# Tk backend untyped; everything of ours stays fully typed. Only the modules that call Tk get
+# this exception – session, viewmodel, host and texts are checked without it.
 [[tool.mypy.overrides]]
-module = ["iaah.gui.*"]
+module = [
+    "iaah.gui.app", "iaah.gui.exports", "iaah.gui.importer", "iaah.gui.startup",
+    "iaah.gui.theme", "iaah.gui.widgets", "iaah.gui.dialogs.*", "iaah.gui.tabs.*",
+]
 disallow_untyped_calls = false
 
 # --------------------------------------------------------------------------- pytest

@@ -1,9 +1,10 @@
-"""Small widgets shared by several tabs: a scrolled table, the colored category buttons and
-the KPI card."""
+"""Small widgets shared by several tabs: a scrolled table, the colored category buttons, the
+KPI card – and the binding of the category keys 1–9."""
 
 import tkinter as tk
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from tkinter import ttk
 from typing import Final, Literal
 
@@ -13,8 +14,27 @@ type Anchor = Literal["w", "e", "center"]
 
 BUTTON_COLUMNS: Final = 3
 NUMBERED_CATEGORIES: Final = 9  # keys 1–9
+DIGITS: Final = "123456789"
+CONTROL_MASK: Final = 0x0004  # Tk event state bit of the Ctrl key
 BUTTON_WIDTH: Final = 18
 BUTTON_RELIEF: Final = "raised"
+
+
+def with_control(event: "tk.Event[tk.Misc]") -> bool:
+    """Whether Ctrl was held during ``event``."""
+    return isinstance(event.state, int) and bool(event.state & CONTROL_MASK)
+
+
+def bind_digits(widget: tk.Misc, assign: Callable[[int], None]) -> None:
+    """Keys 1–9 call ``assign`` with the digit. Tk lets a plain key binding match Ctrl+key
+    too, so Ctrl+1…5 (switching tabs) are ignored here – they must never reassign bookings."""
+    for digit in DIGITS:
+        widget.bind(digit, partial(_on_digit, assign, int(digit)))
+
+
+def _on_digit(assign: Callable[[int], None], number: int, event: "tk.Event[tk.Misc]") -> None:
+    if not with_control(event):
+        assign(number)
 
 
 @dataclass(frozen=True, slots=True)

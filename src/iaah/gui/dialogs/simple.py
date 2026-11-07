@@ -21,6 +21,13 @@ PURPOSE_CHARS: Final = 60
 LIST_SIZE: Final = "760x440"
 TEXT_SIZE: Final = "720x480"
 TEXT_WIDTH: Final = 90
+ENTRY_COLUMNS: Final = (
+    ColumnSpec("day", "Datum", 80),
+    ColumnSpec("payee", "Empfänger", 200, stretch=True),
+    ColumnSpec("purpose", "Zweck", 240, stretch=True),
+    ColumnSpec("amount", "Betrag", 100, "e"),
+    ColumnSpec("category", "Kategorie", 120),
+)
 
 
 class PasswordDialog(Dialog[str]):
@@ -87,33 +94,23 @@ def show_entries(parent: tk.Misc, title: str, entries: Sequence[Entry]) -> None:
     window = tk.Toplevel(parent)
     window.title(title)
     window.geometry(LIST_SIZE)
-    columns = (
-        ColumnSpec("day", "Datum", 80),
-        ColumnSpec("payee", "Empfänger", 200, stretch=True),
-        ColumnSpec("purpose", "Zweck", 240, stretch=True),
-        ColumnSpec("amount", "Betrag", 100, "e"),
-        ColumnSpec("category", "Kategorie", 120),
-    )
-    table = ScrolledTree(window, columns, selectmode="browse")
+    table = ScrolledTree(window, ENTRY_COLUMNS, selectmode="browse")
     table.pack(fill="both", expand=True, padx=PAD, pady=PAD)
     ordered = sorted(entries, key=lambda entry: entry.day)
-    table.fill(
-        (
-            str(n),
-            (
-                day_label(e.day),
-                clean_display(e.transaction.payee),
-                clean_display(e.transaction.purpose)[:PURPOSE_CHARS],
-                format_euro(e.amount),
-                e.category,
-            ),
-            (),
-        )
-        for n, e in enumerate(ordered)
-    )
+    table.fill((str(n), _entry_cells(entry), ()) for n, entry in enumerate(ordered))
     total = sum((entry.amount for entry in entries), ZERO)
     summary = f"{len(entries)} Buchungen   Summe: {format_euro(total)}"
     ttk.Label(window, text=summary, font=FONT_BOLD).pack(anchor="e", padx=PAD_LARGE, pady=PAD)
+
+
+def _entry_cells(entry: Entry) -> tuple[str, ...]:
+    return (
+        day_label(entry.day),
+        clean_display(entry.transaction.payee),
+        clean_display(entry.transaction.purpose)[:PURPOSE_CHARS],
+        format_euro(entry.amount),
+        entry.category,
+    )
 
 
 def show_text(parent: tk.Misc, title: str, text: str) -> None:

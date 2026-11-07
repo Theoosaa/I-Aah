@@ -72,6 +72,7 @@ class ImportSummary:
     duplicates: int = 0
     enriched: int = 0
     already_imported: list[str] = field(default_factory=list)
+    relocated: list[str] = field(default_factory=list)  # imported before, from elsewhere
     without_bookings: list[str] = field(default_factory=list)
     not_reconciling: list[str] = field(default_factory=list)
     with_problems: list[str] = field(default_factory=list)  # suspicious or unreadable lines
@@ -82,7 +83,7 @@ class ImportSummary:
         """Count one imported file and note what deserves a look (``files`` is set by the
         importer to the number of files handed in)."""
         if result.already_imported:
-            self.already_imported.append(name)
+            self.known(name, result.relocated)
             return
         self.added += result.added
         self.duplicates += result.duplicates
@@ -94,6 +95,10 @@ class ImportSummary:
         if parsed.report.has_problems:
             self.with_problems.append(name)
 
+    def known(self, name: str, relocated: bool) -> None:
+        """Count a file imported before; ``relocated`` if it was imported from elsewhere."""
+        (self.relocated if relocated else self.already_imported).append(name)
+
     def message(self) -> str:
         """The German summary shown after an import."""
         lines = [
@@ -103,6 +108,7 @@ class ImportSummary:
         ]
         notes = (
             ("Bereits importiert (übersprungen)", self.already_imported),
+            ("Bereits importiert, neuer Speicherort übernommen", self.relocated),
             ("Keine Buchungen erkannt", self.without_bookings),
             ("Saldo stimmt nicht – bitte in der PDF-Prüfung ansehen", self.not_reconciling),
             ("Auffällige Zeilen – bitte in der PDF-Prüfung ansehen", self.with_problems),
@@ -381,6 +387,14 @@ class Session:
     def knows(self, sha256: str) -> bool:
         """Whether a file with this hash was imported before."""
         return self.workspace.library.knows(sha256)
+
+    def relocate(self, path: Path, sha256: str) -> bool:
+        """Remember where an imported file lies now – the PDF review opens it from there.
+        Saves when the location changed."""
+        moved = self.workspace.library.relocate(sha256, str(path))
+        if moved:
+            self.save()
+        return moved
 
     def adopt(self, catalog: CategoryCatalog, library: Library) -> None:
         """Take over migrated data as the new state; undo starts afresh. Only call it while

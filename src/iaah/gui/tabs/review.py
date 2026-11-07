@@ -7,7 +7,6 @@ The second list shows lines the parser did not use, suspicious ones first.
 """
 
 import tkinter as tk
-from functools import partial
 from io import BytesIO
 from pathlib import Path
 from tkinter import ttk
@@ -35,7 +34,13 @@ from iaah.gui.viewmodel import (
     review_rows,
     unused_lines,
 )
-from iaah.gui.widgets import CategoryButtons, ColumnSpec, ScrolledTree
+from iaah.gui.widgets import (
+    CategoryButtons,
+    ColumnSpec,
+    ScrolledTree,
+    bind_digits,
+    with_control,
+)
 
 POINTS_PER_INCH: Final = 72.0
 BASE_DPI: Final = 100.0
@@ -45,14 +50,13 @@ FILL_ALPHA: Final = 80  # of 255
 OUTLINE_WIDTH: Final = 2
 THIN_OUTLINE: Final = 1
 TRANSPARENT: Final = (0, 0, 0, 0)
-CONTROL_MASK: Final = 0x0004  # Tk event state bit of the Ctrl key
 SELECTION_PADDING: Final = 4.0
 CHANGED_OUTLINE: Final = "#333333"
 SELECTION_TAG: Final = "selection"
 PANEL_WIDTH: Final = 420
 COMBO_WIDTH: Final = 46
-DIGITS: Final = "123456789"
 NO_STATEMENT: Final = "Kein PDF-Kontoauszug mit vorhandener Datei importiert."
+PDF_UNREADABLE: Final = "Die PDF-Datei lässt sich nicht lesen: {path}"
 BOOKING_COLUMNS: Final = (
     ColumnSpec("day", "Datum", 75),
     ColumnSpec("payee", "Empfänger", 115, stretch=True),
@@ -130,8 +134,7 @@ class ReviewTab(ttk.Frame):
         frame.columnconfigure(0, weight=1)
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<MouseWheel>", self._wheel)
-        for digit in DIGITS:  # keys 1–9 assign like on the transactions tab
-            self.canvas.bind(digit, partial(self._on_digit, int(digit)))
+        bind_digits(self.canvas, self._on_digit)  # keys 1–9 as on the transactions tab
 
     def _build_panel(self) -> None:
         panel = ttk.Frame(self, width=PANEL_WIDTH, padding=(PAD_LARGE, 0, 0, 0))
@@ -144,8 +147,7 @@ class ReviewTab(ttk.Frame):
         self.bookings = ScrolledTree(panel, BOOKING_COLUMNS, selectmode="browse")
         self.bookings.grid(row=1, column=0, sticky="nsew")
         self.bookings.tree.bind("<<TreeviewSelect>>", lambda _e: self._pick_from_list())
-        for digit in DIGITS:
-            self.bookings.tree.bind(digit, partial(self._on_digit, int(digit)))
+        bind_digits(self.bookings.tree, self._on_digit)
         self.buttons = CategoryButtons(panel, self._assign)
         self.buttons.grid(row=2, column=0, sticky="w", pady=PAD)
         self.message = ttk.Label(panel, text="", style="Muted.TLabel")
@@ -189,9 +191,11 @@ class ReviewTab(ttk.Frame):
             self._parsed = self.host.session.open_statement(self._statement)
             # Read into memory: an open file would be locked on Windows while I-Aah runs.
             self._pdf = pdfplumber.open(BytesIO(Path(self._statement.path or "").read_bytes()))
-        except (IaahError, OSError) as error:
-            message = error_message(error) if isinstance(error, IaahError) else str(error)
-            self.message.configure(text=message)
+        except IaahError as error:
+            self.message.configure(text=error_message(error))
+            return
+        except OSError:
+            self.message.configure(text=PDF_UNREADABLE.format(path=self._statement.path))
             return
         self._page, self._selected = 1, None
         self._fill_lists()
@@ -318,13 +322,13 @@ class ReviewTab(ttk.Frame):
         self._zoom = min(max(self._zoom + step, 0), len(ZOOMS) - 1)
         self._draw()
 
-    def _wheel(self, event: "tk.Event[tk.Canvas]") -> None:
-        if isinstance(event.state, int) and event.state & CONTROL_MASK:
+    def _wheel(self, event: "tk.Event[tk.Misc]") -> None:
+        if with_control(event):
             self._zoom_by(1 if event.delta > 0 else -1)
             return
         self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
-    def _on_digit(self, number: int, _event: object) -> None:
+    def _on_digit(self, number: int) -> None:
         names = self.host.session.catalog.names()
         if number <= len(names):
             self._assign(names[number - 1])

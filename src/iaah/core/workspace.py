@@ -54,13 +54,15 @@ class Workspace:
     def import_file(self, path: Path) -> ImportResult:
         """Read a statement file (PDF or CSV, by suffix) and add it to the library.
 
-        A file imported before is recognised by its hash without being parsed again. Raises
-        ``StatementParseError`` / ``CsvMappingError``; for a CSV whose columns cannot be
-        detected the GUI asks for the mapping and calls ``import_parsed``.
+        A file imported before is recognised by its hash without being parsed again; only its
+        new location is remembered. Raises ``StatementParseError`` / ``CsvMappingError``; for a
+        CSV whose columns cannot be detected the GUI asks for the mapping and calls
+        ``import_parsed``.
         """
         digest = file_sha256(path)
         if self.library.knows(digest):
-            return ImportResult(0, 0, 0, already_imported=True)
+            relocated = self.library.relocate(digest, str(path))
+            return ImportResult(0, 0, 0, already_imported=True, relocated=relocated)
         return self.library.add(read_statement_file(path), str(path), digest)
 
     def import_parsed(self, parsed: ParsedStatement, path: Path) -> ImportResult:

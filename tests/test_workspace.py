@@ -34,6 +34,20 @@ def test_import_csv_and_build_entries(tmp_path: Path) -> None:
     assert workspace.library.statements[0].sha256 == file_sha256(path)
 
 
+def test_importing_a_moved_file_updates_its_location(tmp_path: Path) -> None:
+    old = tmp_path / "alt" / "umsatz.csv"
+    new = tmp_path / "neu" / "umsatz.csv"
+    for path in (old, new):
+        path.parent.mkdir()
+        path.write_text(CSV, encoding="utf-8")
+    workspace = _workspace()
+    workspace.import_file(old)
+    result = workspace.import_file(new)
+    assert result.already_imported and result.relocated
+    assert workspace.library.statements[0].path == str(new)
+    assert len(workspace.library.transactions) == 1
+
+
 def test_unsupported_or_unreadable_files(tmp_path: Path) -> None:
     workspace = _workspace()
     with pytest.raises(StatementParseError):

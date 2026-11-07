@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import filedialog
 from typing import Final
 
-from iaah.core.analysis.ledger import Entry, Period, build_entries
+from iaah.core.analysis.ledger import Entry, Period, build_entries, entries_of_category
 from iaah.core.parsing.ing import read_statement
 from iaah.export.marked_pdf import marked_name, write_marked_pdf
 from iaah.export.report import write_report
@@ -50,8 +50,12 @@ def _target(
 
 
 def _filtered_entries(host: Host) -> list[Entry]:
+    """The entries of the filtered table; under a category filter only that category's split
+    parts, matching the status line."""
     session = host.session
-    return build_entries([row.transaction for row in session.rows()], session.categorizer)
+    entries = build_entries([row.transaction for row in session.rows()], session.categorizer)
+    category = session.filters.category
+    return entries_of_category(entries, category) if category else entries
 
 
 def bookings(parent: tk.Misc, host: Host, excel: bool) -> None:

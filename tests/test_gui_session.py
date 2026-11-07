@@ -1,9 +1,10 @@
 """GUI state without a display: filters, rows, assigning, keywords, undo, categories, analysis."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -13,7 +14,18 @@ from iaah.core.analysis.totals import BudgetLevel
 from iaah.core.assignments import SplitPart
 from iaah.core.categories import CategoryKind
 from iaah.core.category_io import default_catalog
-from iaah.core.errors import CategoryError, KeywordConflictError, SplitError
+from iaah.core.errors import (
+    CategoryError,
+    DataUnreadableError,
+    DuplicateCategoryError,
+    FallbackCategoryError,
+    IaahError,
+    KeywordConflictError,
+    SplitError,
+    StorageError,
+    UnknownCategoryError,
+    WrongPasswordError,
+)
 from iaah.core.library import ImportResult, Library, StoredStatement
 from iaah.core.migration import DroppedItem, DropReason, MigrationReport
 from iaah.core.models import StatementInfo, Transaction
@@ -21,7 +33,11 @@ from iaah.core.parsing.ing import read_statement
 from iaah.core.parsing.layout import LineStatus
 from iaah.core.storage import DataPaths, DataStore
 from iaah.core.workspace import Workspace
-from iaah.gui.session import ImportSummary, Session
+from iaah.export.files import ExportError
+from iaah.gui import exports
+from iaah.gui.host import Host
+from iaah.gui.session import UNDO_LIMIT, ImportSummary, Session
+from iaah.gui.texts import GENERIC, INVALID_CATEGORY_INPUT, error_message
 from iaah.gui.viewmodel import (
     Column,
     Direction,
@@ -37,6 +53,7 @@ from iaah.gui.viewmodel import (
     migration_text,
     periods,
     review_boxes,
+    unsaved_budgets,
     unused_lines,
     view_totals,
 )
@@ -451,3 +468,112 @@ def test_session_without_store_does_not_save(workspace: Workspace) -> None:
     session = Session(Workspace(workspace.catalog, Library()))
     session.add_category("Neu")
     assert "Neu" in session.catalog
+
+
+# -- third review round -----------------------------------------------------------------------
+
+
+def test_undo_steps_back_through_every_category_change(session: Session) -> None:
+    names = session.catalog.names()
+    session.add_category("Hobby", "#123456")
+    session.rename_category("Hobby", "Basteln")
+    session.recolor("Basteln", "#654321")
+    session.set_kind("Basteln", CategoryKind.IGNORED)
+    session.remove_category("Basteln")
+    session.undo()
+    assert session.catalog.get("Basteln").kind is CategoryKind.IGNORED
+    session.undo()
+    assert session.catalog.get("Basteln").kind is CategoryKind.EXPENSE
+    session.undo()
+    assert session.catalog.color_of("Basteln") == "#123456"
+    session.undo()
+    assert "Hobby" in session.catalog
+    assert "Basteln" not in session.catalog
+    session.undo()
+    assert session.catalog.names() == names
+
+
+def test_undo_keeps_the_last_steps_only(session: Session) -> None:
+    for number in range(UNDO_LIMIT + 2):
+        session.add_category(f"K{number}")
+    steps = 0
+    while session.undo():
+        steps += 1
+    assert steps == UNDO_LIMIT
+    assert "K1" in session.catalog
+    assert "K2" not in session.catalog
+
+
+def test_a_failed_save_keeps_the_change_undoable(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail() -> None:
+        raise StorageError("disk full")
+
+    monkeypatch.setattr(session, "save", fail)
+    session.select([_index(session, "Kiosk am Markt")])
+    with pytest.raises(StorageError):
+        session.assign("Freizeit")
+    assert session.categorizer.resolve(KIOSK).category == "Freizeit"  # in memory
+    assert session.can_undo
+
+
+def test_unsaved_budget_inputs() -> None:
+    shown = {"Wohnen": "", "Shopping": "100,00", "Freizeit": ""}
+    current = {"Wohnen": "950", "Shopping": "100,00", "Freizeit": "viel"}
+    stored = {"Wohnen": None, "Shopping": Decimal(300), "Freizeit": None}
+    # Typed and not stored survives (also invalid text, so the error can be shown on saving);
+    # untouched inputs show the stored budget, even when it changed elsewhere.
+    assert unsaved_budgets(shown, current, stored) == {"Wohnen": "950", "Freizeit": "viel"}
+    # Just saved: the input equals the stored budget, so undo shows the stored value again.
+    assert unsaved_budgets(shown, current, stored | {"Wohnen": Decimal(950)}) == {
+        "Freizeit": "viel"
+    }
+    assert unsaved_budgets(current, current, {"Wohnen": None}) == {}
+
+
+@dataclass(frozen=True, slots=True)
+class _HostStub:
+    session: Session
+
+
+def test_exports_under_a_category_filter_hold_only_its_parts(session: Session) -> None:
+    host = cast(Host, _HostStub(session))
+    session.filters.category = "Gesundheit"
+    entries = exports._filtered_entries(host)
+    assert {entry.category for entry in entries} == {"Gesundheit"}
+    assert sum(entry.amount for entry in entries) == Decimal("-15.00")  # as the status line
+    session.filters.category = ""
+    assert len(exports._filtered_entries(host)) > len(entries)
+
+
+def test_error_messages_name_what_went_wrong(tmp_path: Path) -> None:
+    target = tmp_path / "report.pdf"
+    assert str(target) in error_message(ExportError(target))
+    assert "„kino“ gehört schon zu „Freizeit“" in error_message(
+        KeywordConflictError("kino", "Freizeit")
+    )
+    assert "„Wohnen“ gibt es schon" in error_message(DuplicateCategoryError("Wohnen"))
+    assert "„Hobby“ gibt es nicht" in error_message(UnknownCategoryError("Hobby"))
+    assert error_message(CategoryError("empty name")) == INVALID_CATEGORY_INPUT
+    assert "Auffang-Kategorien" in error_message(FallbackCategoryError("Sonstiges"))
+    assert error_message(WrongPasswordError("wrong")) == "Das Passwort ist falsch."
+    assert "unverändert" in error_message(DataUnreadableError("locked"))
+    assert error_message(IaahError("anything")) == GENERIC
+
+
+def test_a_moved_statement_is_found_again(session: Session, statement_pdf: Path) -> None:
+    session.import_parsed(read_statement(statement_pdf), statement_pdf, "abc")
+    moved = statement_pdf.parent / "archiv" / statement_pdf.name
+    moved.parent.mkdir()
+    statement_pdf.rename(moved)
+    assert session.reviewable() == []
+    assert session.relocate(moved, "abc")
+    assert not session.relocate(moved, "abc")  # already there
+    assert [stored.path for stored in session.reviewable()] == [str(moved)]
+    summary = ImportSummary(files=2)
+    summary.known("a.pdf", relocated=True)
+    summary.known("b.pdf", relocated=False)
+    message = summary.message()
+    assert "neuer Speicherort übernommen: a.pdf" in message
+    assert "Bereits importiert (übersprungen): b.pdf" in message

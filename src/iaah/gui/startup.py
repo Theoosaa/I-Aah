@@ -107,18 +107,19 @@ def _report_recovery(root: tk.Misc, store: DataStore) -> None:
 # -- legacy data ------------------------------------------------------------------------------
 
 
-def offer_migration(root: tk.Misc, session: Session, folder: Path) -> None:
+def offer_migration(root: tk.Misc, session: Session, folder: Path) -> bool:
     """On a first start – nothing of the user's yet – take over the legacy app's files if
-    ``folder`` holds them."""
+    ``folder`` holds them. ``True`` if they were adopted."""
     if not session.is_pristine() or not has_legacy_files(folder):
-        return
+        return False
     question = (
         f"Im Ordner {folder} liegen Daten der alten I-Aah-Version (Kategorien, Regeln, "
         "Buchungen, Zuordnungen). Jetzt übernehmen? Die alten Dateien bleiben "
         "unverändert."
     )
-    if messagebox.askyesno(APP_TITLE, question, parent=root):
-        migrate_from(root, session, folder)
+    if not messagebox.askyesno(APP_TITLE, question, parent=root):
+        return False
+    return migrate_from(root, session, folder)
 
 
 def choose_and_migrate(root: tk.Misc, session: Session) -> None:
@@ -154,8 +155,8 @@ def _replace_confirmed(root: tk.Misc, session: Session) -> bool:
     return messagebox.askyesno(APP_TITLE, question, icon="warning", default="no", parent=root)
 
 
-def migrate_from(root: tk.Misc, session: Session, folder: Path) -> None:
-    """Read, migrate and adopt the legacy files; show the report."""
+def migrate_from(root: tk.Misc, session: Session, folder: Path) -> bool:
+    """Read, migrate and adopt the legacy files; show the report. ``True`` if adopted."""
     try:
         legacy = read_legacy(folder)
     except PasswordRequiredError:
@@ -163,23 +164,24 @@ def migrate_from(root: tk.Misc, session: Session, folder: Path) -> None:
             root, "Passwort der alten Daten", "Die alte data.json ist verschlüsselt:"
         ).show()
         if password is None:
-            return
+            return False
         try:
             legacy = read_legacy(folder, password)
         except IaahError as error:
             messagebox.showerror(APP_TITLE, error_message(error), parent=root)
-            return
+            return False
     except IaahError as error:
         messagebox.showerror(APP_TITLE, error_message(error), parent=root)
-        return
-    _adopt(root, session, legacy)
+        return False
+    return _adopt(root, session, legacy)
 
 
-def _adopt(root: tk.Misc, session: Session, legacy: LegacyData) -> None:
+def _adopt(root: tk.Misc, session: Session, legacy: LegacyData) -> bool:
     try:
         migration = migrate(legacy, default_catalog())
         session.adopt(migration.catalog, migration.library)
     except IaahError as error:
         messagebox.showerror(APP_TITLE, error_message(error), parent=root)
-        return
+        return False
     show_text(root, "Übernahme der alten Daten", migration_text(migration.report))
+    return True

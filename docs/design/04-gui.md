@@ -107,7 +107,7 @@ Ignoriert; fallbacks locked), monthly budget, keywords (add, edit, remove, confl
 * **Kategorien:** Neue Kategorie… · Kategorien laden… · Kategorien speichern unter…
 * **Ansicht:** Dunkles Design · tabs Ctrl+1…5.
 * **Datenschutz:** Passwort festlegen/ändern… · Passwort entfernen… · Beschädigte Kopien
-  löschen… (only if there are any).
+  löschen… (always shown; says when there are none – see "Revisions after review").
 * **Hilfe:** Datenordner öffnen · Über I-Aah.
 
 ## Start-up
@@ -216,6 +216,13 @@ Details in `docs/review/04-gui.md`. Changes to this note:
 * No-op changes create no undo step; the category filter follows rename and removal; the
   status line counts split parts under a category filter; exports never overwrite an imported
   statement.
+* Second round: keys 1–9 go through `widgets.bind_digits`, which ignores Ctrl (Ctrl+1…5 switch
+  tabs); the budgets tab keeps only inputs typed since its last refresh
+  (`viewmodel.unsaved_budgets`); exports and the summary under a category filter hold only that
+  category's parts; *Kategorien speichern unter…* is guarded like the exports; the window does
+  not close while an import or a modal dialog runs; a known statement imported from a new
+  place updates its stored path (`Library.relocate`), so the PDF review finds moved files; the
+  mypy override covers only the modules that call Tk.
 
 ## Tests
 
@@ -227,4 +234,5 @@ of the review page, saving after each change (into `tmp_path`). `test_architectu
 `gui/session.py` imports no tkinter. The widgets are verified by running the app (screenshots of
 every tab in light and dark, with the synthetic workspace) and by `tests/test_gui_smoke.py`
 (real Tk, skipped without a display): start-up dialog on a hidden window, every tab in both
-themes, importer worker.
+themes, importer worker, key routing, budgets tab, modal `show()`. `tests/test_gui_startup.py`
+runs the start-up and migration flows with scripted dialogs.
