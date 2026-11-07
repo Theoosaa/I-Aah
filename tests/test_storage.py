@@ -15,6 +15,7 @@ from iaah.core.category_io import default_catalog
 from iaah.core.crypto import MAGIC, is_encrypted
 from iaah.core.document import document_to_json
 from iaah.core.errors import (
+    DataUnreadableError,
     PasswordRequiredError,
     StorageError,
     UnsupportedVersionError,
@@ -272,6 +273,35 @@ def test_a_briefly_blocked_rename_is_retried(
     monkeypatch.setattr(Path, "replace", blocked_twice)
     atomic_write(tmp_path / "f.json", b"neu")
     assert (tmp_path / "f.json").read_bytes() == b"neu"
+
+
+def test_start_over_keeps_the_unreadable_files(tmp_path: Path) -> None:
+    paths = DataPaths(tmp_path)
+    _two_versions(paths)
+    paths.data.write_bytes(b"{ damaged")
+    backup_of(paths.data).write_bytes(b"{ also damaged")
+    store = DataStore(paths)
+    with pytest.raises(StorageError):
+        store.load()
+    moved = store.start_over()
+    assert [path.read_bytes() for path in moved] == [b"{ damaged", b"{ also damaged"]
+    assert store.damaged_copies() == sorted(moved)
+    store.save(default_catalog(), _library("neu"))  # the session owns the empty data now
+    assert _payee(DataStore(paths)) == "neu"
+
+
+def test_an_unreadable_data_file_is_not_damage(tmp_path: Path) -> None:
+    paths = DataPaths(tmp_path)
+    paths.data.mkdir()  # exists, but cannot be read as a file
+    with pytest.raises(DataUnreadableError):
+        DataStore(paths).load()
+    assert paths.data.is_dir()  # nothing set aside
+
+
+def test_start_over_without_files_moves_nothing(tmp_path: Path) -> None:
+    assert DataStore(DataPaths(tmp_path)).start_over() == []
+    with pytest.raises(StorageError, match="read-only"):
+        DataStore(DataPaths(tmp_path), read_only=True).start_over()
 
 
 def test_read_only_store_creates_no_directory(tmp_path: Path) -> None:

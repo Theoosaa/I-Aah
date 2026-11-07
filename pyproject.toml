@@ -86,6 +86,12 @@ strict = true
 mypy_path = "src"
 files = ["src", "tests"]
 
+# typeshed leaves some tkinter methods (Notebook.select, Listbox.curselection) and matplotlib's
+# Tk backend untyped; everything of ours stays fully typed.
+[[tool.mypy.overrides]]
+module = ["iaah.gui.*"]
+disallow_untyped_calls = false
+
 # --------------------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]

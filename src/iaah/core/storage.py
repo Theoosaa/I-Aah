@@ -40,6 +40,7 @@ from iaah.core.category_io import default_catalog
 from iaah.core.crypto import Cipher, decrypt, is_encrypted, unlock
 from iaah.core.document import document_from_json, document_to_json
 from iaah.core.errors import (
+    DataUnreadableError,
     PasswordRequiredError,
     StorageError,
     UnsupportedVersionError,
@@ -191,10 +192,12 @@ def _remove_temps(path: Path) -> None:
 
 
 def _read(path: Path) -> bytes | None:
+    """The file's bytes, ``None`` if it does not exist; ``DataUnreadableError`` if it exists
+    but cannot be read (locked, no permission, a folder) – that is not damage."""
     try:
         return path.read_bytes() if path.exists() else None
     except OSError as error:
-        raise StorageError(f"cannot read {path}") from error
+        raise DataUnreadableError(f"cannot read {path}") from error
 
 
 def _read_optional(path: Path) -> bytes | None:
@@ -395,6 +398,25 @@ class DataStore:
         """Damaged data files set aside by earlier loads. They may hold unencrypted data, so
         the GUI lists them when encryption is switched on."""
         return sorted(self.paths.root.glob(self.paths.data.name + DAMAGED_INFIX + GLOB_ANY))
+
+    def start_over(self) -> list[Path]:
+        """After a load that failed with damage (not a newer version, not a missing password):
+        move data file and backup aside – kept as damaged copies, never deleted – so the app can
+        start empty. Returns where they went; afterwards this session owns the (empty) data."""
+        self._require_writable()
+        damaged = damaged_copy_of(self.paths.data, datetime.now())
+        moved: list[Path] = []
+        for source, target in ((self.paths.data, damaged), (backup_of(self.paths.data),
+                                                            backup_of(damaged))):  # fmt: skip
+            if not source.exists():
+                continue
+            try:
+                source.replace(target)
+            except OSError as error:
+                raise StorageError(f"cannot move {source} aside") from error
+            moved.append(target)
+        self._owns_data = True
+        return moved
 
     def load_ui_state(self) -> dict[str, Any]:
         """Window and view settings; empty if missing or unreadable (never essential). Entries

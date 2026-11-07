@@ -12,6 +12,7 @@ PACKAGE_ROOT: Final = Path(__file__).resolve().parent.parent / "src" / "iaah"
 GUI_TOOLKITS: Final = ("tkinter", "PIL.ImageTk")
 PLOTTING: Final = ("matplotlib",)
 UPPER_LAYERS: Final = ("iaah.gui", "iaah.cli")
+DISPLAY_FREE_GUI_MODULES: Final = ("session.py", "viewmodel.py")
 
 # layer directory -> module prefixes it must not import
 FORBIDDEN_IMPORTS: Final[dict[str, tuple[str, ...]]] = {
@@ -55,6 +56,13 @@ def _relative_imports() -> list[str]:
 @pytest.mark.parametrize("layer", sorted(FORBIDDEN_IMPORTS))
 def test_layer_respects_import_boundaries(layer: str) -> None:
     assert _violations(layer) == []
+
+
+@pytest.mark.parametrize("module", DISPLAY_FREE_GUI_MODULES)
+def test_gui_state_needs_no_display(module: str) -> None:
+    # The GUI's state and view model are unit-tested without a display.
+    path = PACKAGE_ROOT / "gui" / module
+    assert [name for name in _imported_modules(path) if name.startswith(GUI_TOOLKITS)] == []
 
 
 def test_no_relative_imports() -> None:

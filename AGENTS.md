@@ -12,9 +12,9 @@ Tkinter GUI, and analyses spending over months and years (charts, budgets, expor
 It merges two earlier tools: the legacy I-Aah app (`kontoanalyse.py`) and *budgets*
 (MIT, see `LICENSES/`). I-Aah itself is MIT-licensed (`LICENSE`).
 
-**Status:** the unification is in progress (plan and per-step notes in `docs/`). `iaah-cli`
-works; until the new GUI lands, `python kontoanalyse.py` is still the working app, and `iaah` /
-`python -m iaah` become available with the GUI step.
+**Status:** the unification is in progress (plan and per-step notes in `docs/`). `iaah` /
+`python -m iaah` (GUI) and `iaah-cli` work; the legacy files (`kontoanalyse.py` and friends)
+are removed in the last step.
 
 ## Setup
 
@@ -60,8 +60,9 @@ Before calling any change done: `pytest`, `ruff check .`, `ruff format --check .
    `core` imports neither tkinter, matplotlib nor Pillow; `charts` and `export` never import
    tkinter. `tests/test_architecture.py` enforces this.
 2. **The GUI holds no business logic.** Widgets display and forward events. GUI state that
-   is worth testing (selection, undo, before/after) lives in `gui/session.py`, which does
-   not import tkinter.
+   is worth testing (selection, undo, filters, rows, before/after) lives in `gui/session.py`
+   and `gui/viewmodel.py`, which do not import tkinter. Tabs talk to the window only through
+   the `Host` protocol (`gui/host.py`).
 3. **One parsing path.** The parser yields transactions with page number and bounding box;
    PDF view, marked-PDF export and diagnostics all reuse that result.
 4. **Categories are keyword lists.** `CategoryCatalog` is the single source of truth and
@@ -132,8 +133,9 @@ Checked in review (no reliable tool support):
 
 ## Tests
 
-- pytest covers `core`, `charts` (Agg backend), `export` and the CLI. The GUI is verified by
-  running it.
+- pytest covers `core`, `charts` (Agg backend), `export`, the CLI and the display-free GUI
+  state (`gui/session.py`, `gui/viewmodel.py`). `tests/test_gui_smoke.py` builds the real
+  window and skips without a display; everything else in the GUI is verified by running it.
 - Tests are typed like production code; only magic values are allowed in assertions.
 - Warnings are errors (`filterwarnings = error`); silence a third-party warning explicitly
   and narrowly in `pyproject.toml` if needed.

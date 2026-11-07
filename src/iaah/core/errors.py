@@ -70,5 +70,10 @@ class WrongPasswordError(StorageError):
     """The password does not decrypt the data."""
 
 
+class DataUnreadableError(StorageError):
+    """The data file exists but cannot be read right now (locked, no permission) – not damage;
+    nothing may be set aside because of it."""
+
+
 class UnsupportedVersionError(StorageError):
     """The data file was written by a newer program version – never treated as damage."""
